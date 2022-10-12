@@ -62,13 +62,14 @@ species individual parent:human{
 		float gender_coeff <-  death_coeff[gender];
 		float scale_coeff <- (1/nb_ticks_per_year)*(1/1000); // time and proportion scale factors
 		float age_coeff <- 1.0;
-		// formulas proposed, based on INSEE data (2021) :
+		// base formulas proposed :
 		if(age < 15){
 			age_coeff <- max(0.0001,((1/10000) * exp((15-(age+1)) *0.75) + 0.08));
 		}
 		else{
 			age_coeff <- max(0.0001,(-0.3 + 0.12 * exp((age+1) *0.07)));
 		}
+		// Note : formulas are deliberately not detailed/explained here: you will have to propose your own demographic model.
 		return gender_coeff * scale_coeff * age_coeff * coeff_death;
 	}
 	
@@ -79,13 +80,15 @@ species individual parent:human{
 		float scale_coeff <- (1/nb_ticks_per_year)*(1/100); // time and proportion scale factors
 		float age_coeff <- 1.0;
 		float coeff_availability <- min(1.0, men_per_woman);
-		// formulas proposed, based on INSEE data (2021) :
+		
+		// formulas proposed :
 		if(age < 35){
 			age_coeff <- max(0,(-0.5 + 1.5 * exp((50-(age+1)) * 0.14)));
 		}
 		else{
 			age_coeff <- max(0,(-0.035 * (age+1)^2 + 3.0*(age+1) - 50));
 		}
+		// Note : formulas are deliberately not detailed/explained here: you will have to propose your own demographic model.
 		return scale_coeff * age_coeff * coeff_birth * coeff_availability;
 	}
 	
@@ -103,7 +106,7 @@ species individual parent:human{
 species residents parent:bloc{
 	string name <- "residents";
 	
-	list<string> get_possible_behaviors{
+	list<string> get_possible_consumptions{
 		return [];
 	}
 	
@@ -189,7 +192,7 @@ species residents parent:bloc{
  * We define here the experiment and the displays related to demography. 
  * We will then be able to run this experiment from the Main code of the simulation, with all the blocs connected.
  * 
- * Note : experiment car inherit another experiment, bu we can't combine displays from multiple experiments at the same time. 
+ * Note : experiment car inherit another experiment, but we can't combine displays from multiple experiments at the same time. 
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
  */
 experiment run_demography type: gui {

@@ -16,16 +16,17 @@ global{
 
 	/* Setup */
 	list resources_E <- ["L water", "m² land", "gCO2e emissions"];
-	list behaviors_E <- ["kWh energy"];
+	list productions_E <- ["kWh energy"];
 	int min_kWh_conso <- 1; // Note : this is fake data (not the real energy consumption)
 	int max_kWh_conso <- 120; // Note : this is fake data (not the real energy consumption)
 	
 	/* Counters & Stats */
-	map<string, int> tick_behaviors_E <- [];
-	map<string,int> tick_impacts_E <- [];
+	map<string, float> tick_production_E <- [];
+	map<string, float> tick_pop_consumption_E <- [];
+	map<string, float> tick_impacts_E <- [];
 	
 	/* Input data */
-	map behavior_input_output_E <- [
+	map production_input_output_E <- [
 		"kWh energy"::["L water"::80.0, "m² land"::25.0, "gCO2e emissions"::120.0]
 	]; // Note : this is fake data (not the real amound of resources used and emitted).
 }
@@ -46,8 +47,8 @@ species energy parent:bloc{
 		return producer;
 	}
 
-	list<string> get_possible_behaviors{
-		return behaviors_E;
+	list<string> get_possible_consumptions{
+		return productions_E;
 	}
 	
 	list<string> get_possible_resources_used{
@@ -55,15 +56,15 @@ species energy parent:bloc{
 	}
 	
 	map<string, float> get_tick_resources_used{
-		map<string, float> conso <- [];
-		conso <- producer.get_tick_consumptions();
-		return conso;
+		return producer.get_tick_resources_used();
 	}
 	
-	map<string, float> get_tick_behaviors{
-		map<string, float> behaviors <- [];
-		behaviors <- consumer.get_tick_behaviors();
-		return behaviors;
+	map<string, float> get_tick_consumptions{
+		return consumer.get_tick_consumptions();
+	}
+	
+	map<string, float> get_tick_production{
+		return producer.get_tick_production();
 	}
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -76,23 +77,32 @@ species energy parent:bloc{
 	 * The production is minimalistic here : we apply an average resource consumption and emissions for the energy production.
 	 */
 	species energy_producer parent:production_agent{
-		map<string, float> tick_consumption <- [];
+		map<string, float> tick_resources_used <- [];
+		map<string, float> tick_production <- [];
 		
-		map<string, float> get_tick_consumptions{
-			return tick_consumption;
+		map<string, float> get_tick_resources_used{
+			return tick_resources_used;
+		}
+		
+		map<string, float> get_tick_production{
+			return tick_production;
 		}
 	
 		action new_tick{ // reset impact counters
 			loop u over: resources_E{
-				tick_consumption[u] <- 0.0; // reset resources usage
+				tick_resources_used[u] <- 0.0; // reset resources usage
+			}
+			loop p over: productions_E{
+				tick_production[p] <- 0.0; // reset productions
 			}
 		}
 		
 		bool produce(map<string,float> demand){ // apply the inpu
 			loop c over: demand.keys{
-				loop u over: resources_E{  // quantify the resources consumed/emitted by this demand
-					tick_consumption[u] <- tick_consumption[u] + behavior_input_output_E[c][u] * demand[c];
+				loop u over: resources_E{  // needs (resources consumed/emitted) for this demand
+					tick_resources_used[u] <- tick_resources_used[u] + production_input_output_E[c][u] * demand[c];
 				}
+				tick_production[c] <- tick_production[c] + demand[c];
 			}
 			return true; // always return 'ok' signal
 		}
@@ -109,14 +119,14 @@ species energy parent:bloc{
 	 */
 	species energy_consumer parent:consumption_agent{
 	
-		map<string, int> consumed <- [];
+		map<string, float> consumed <- [];
 		
-		map<string, float> get_tick_behaviors{
+		map<string, float> get_tick_consumptions{
 			return copy(consumed);
 		}
 		
 		init{
-			loop c over: behaviors_E{
+			loop c over: productions_E{
 				consumed[c] <- 0;
 			}
 		}
@@ -128,7 +138,7 @@ species energy parent:bloc{
 		}
 		
 		action consume(human h){
-		    string choice <- one_of(behaviors_E);
+		    string choice <- one_of(productions_E);
 			consumed[choice] <- consumed[choice]+rnd(min_kWh_conso, max_kWh_conso); // monthly consume a random amount of energy 
 		}
 	}
@@ -171,8 +181,9 @@ species energy parent:bloc{
     }
     
     action end_tick{
-    	tick_behaviors_E <- get_tick_behaviors(); // collect consumption behaviors
+    	tick_pop_consumption_E <- get_tick_consumptions(); // collect consumption behaviors
     	tick_impacts_E <- get_tick_resources_used(); // collect resources used
+    	tick_production_E <- get_tick_production(); // collect production
    	}
     
 }
@@ -181,20 +192,25 @@ species energy parent:bloc{
  * We define here the experiment and the displays related to energy. 
  * We will then be able to run this experiment from the Main code of the simulation, with all the blocs connected.
  * 
- * Note : experiment car inherit another experiment, bu we can't combine displays from multiple experiments at the same time. 
+ * Note : experiment car inherit another experiment, but we can't combine displays from multiple experiments at the same time. 
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
  */
 experiment run_energy type: gui {
 	output {
 		display Energy_information {
-			chart "Population consumption" type: series  size: {1,0.5} position: {0, 0} {
-			    loop c over: behaviors_E{
-			    	data c value: tick_behaviors_E[c]; // note : energy consumed by other blocs NOT included here (only population direct consumption)
+			chart "Population direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
+			    loop c over: productions_E{
+			    	data c value: tick_pop_consumption_E[c]; // note : products consumed by other blocs NOT included here (only population direct consumption)
+			    }
+			}
+			chart "Total production" type: series  size: {0.5,0.5} position: {0.5, 0} {
+			    loop c over: productions_E{
+			    	data c value: tick_production_E[c];
 			    }
 			}
 			chart "Resources usage" type: series size: {1,0.5} position: {0, 0.5} {
 			    loop r over: resources_E{
-			    	data r value: tick_impacts_E[r]; // note : energy consumed by other blocs included here
+			    	data r value: tick_impacts_E[r];
 			    }
 			}
 	    }

@@ -15,24 +15,22 @@ import "../API/API.gaml"
 global{
 
 	/* Setup */
-	list behaviors_A <- ["INCA3", "flexitarian", "vegetarian"];
+	list productions_A <- ["kg_meat", "kg_vegetables"];
 	list resources_A <- ["L water", "kWh energy", "m² land", "gCO2e emissions"];
 	
 	/* Parameters */
-	list behavior_prop <- [0.75, 0.20, 0.05]; // distribution of the behaviors in the population
-	int update_distrib_every_x_cycles <- 6; // delay between two updates of the distribution of the behaviors
-	float update_distrib_change <- 0.01; // the amount of change in the distribution of the behaviors at each update
+	map consumption_qt <- ["kg_meat"::5.2, "kg_vegetables"::12.5]; // monthly consumption per individual of the population. Note : this is fake data.
 	
 	/* Input data */
-	map behavior_input_output_A <- [
-		"INCA3"::["L water"::1500.0, "kWh energy"::250.0, "m² land"::300.0, "gCO2e emissions"::1800.0],
-		"flexitarian"::["L water"::1100.0, "kWh energy"::200.0, "m² land"::240.0, "gCO2e emissions"::1300.0],
-		"vegetarian"::["L water"::900.0, "kWh energy"::175.0, "m² land"::200.0, "gCO2e emissions"::1050.0]
-	]; // Note : this is fake data (not the real amound of resources used and emitted).
+	map production_input_output_A <- [
+		"kg_meat"::["L water"::2500.0, "kWh energy"::450.0, "m² land"::500.0, "gCO2e emissions"::3500.0],
+		"kg_vegetables"::["L water"::900.0, "kWh energy"::175.0, "m² land"::100.0, "gCO2e emissions"::1000.0]
+	]; // Note : this is fake data (not the real amound of resources used and emitted)
 	
 	/* Counters & Stats */
-	map<string, int> tick_behaviors_A <- [];
-	map<string,int> tick_impacts_A <- [];
+	map<string, float> tick_production_A <- [];
+	map<string, float> tick_pop_consumption_A <- [];
+	map<string, float> tick_impacts_A <- [];
 }
 
 /**
@@ -56,27 +54,8 @@ species agricultural parent:bloc{
 		return producer;
 	}
 
-	list<string> get_possible_behaviors{
-		return behaviors_A;
-	}
-	
-	/* Reflex : update the distribution of the behaviors to allow a certain amount change */
-	reflex update_behavior_prop when:(cycle mod update_distrib_every_x_cycles = 0){ // update distribution every x cycles
-		list<float> tmp_prop <- copy(behavior_prop);
-		loop i from:0 to:length(tmp_prop)-1{ // a part of the population will keep its actual behavior
-			tmp_prop[i] <- tmp_prop[i] * (1.0 - update_distrib_change); 
-		}
-		list<float> rep_change <- [];
-		float tot <- 0.0;
-		loop i from:0 to:length(tmp_prop)-1{ // the others will change their behavior
-			rep_change <- rep_change + [rnd(1.0)]; // randomly distribute the change on the different behaviors
-			tot <- tot + rep_change[i];
-		}
-		rep_change <- shuffle(rep_change);
-		loop i from:0 to:length(rep_change)-1{
-			tmp_prop[i] <- tmp_prop[i] + (rep_change[i]/tot) * update_distrib_change ; 
-		}
-		behavior_prop <- tmp_prop; // update behavior distribution
+	list<string> get_possible_consumptions{
+		return productions_A;
 	}
 	
 	list<string> get_possible_resources_used{
@@ -84,16 +63,17 @@ species agricultural parent:bloc{
 	}
 	
 	map<string, float> get_tick_resources_used{
-		map<string, float> conso <- [];
-		conso <- producer.get_tick_consumptions();
-		return conso;
+		return producer.get_tick_resources_used();
 	}
 	
-	map<string, float> get_tick_behaviors{
-		map<string, float> behaviors <- [];
-		behaviors <- consumer.get_tick_behaviors();
-		return behaviors;
+	map<string, float> get_tick_consumptions{
+		return consumer.get_tick_consumptions();
 	}
+	
+	map<string, float> get_tick_production{
+		return producer.get_tick_production();
+	}
+	
 	
 	/**
 	 * We define here the production agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
@@ -103,15 +83,19 @@ species agricultural parent:bloc{
 	 */
 	species agri_producer parent:production_agent{
 		map<string, bloc> external_producers; // external producers that provide the needed resources
-		map<string, float> tick_consumption;
+		map<string, float> tick_resources_used <- [];
+		map<string, float> tick_production <- [];
 		
 		init{
 			external_producers <- []; // external producers that provide the needed resources
-			tick_consumption <- [];
 		}
 		
-		map<string, float> get_tick_consumptions{
-			return tick_consumption;
+		map<string, float> get_tick_resources_used{
+			return tick_resources_used;
+		}
+		
+		map<string, float> get_tick_production{
+			return tick_production;
 		}
 		
 		action set_external_producer(string product, bloc bloc_agent){
@@ -121,7 +105,10 @@ species agricultural parent:bloc{
 	
 		action new_tick{ // reset impact counters
 			loop u over: resources_A{
-				tick_consumption[u] <- 0.0; // reset resources usage
+				tick_resources_used[u] <- 0.0; // reset resources usage
+			}
+			loop p over: productions_A{
+				tick_production[p] <- 0.0; // reset productions
 			}
 		}
 		
@@ -129,8 +116,8 @@ species agricultural parent:bloc{
 			bool ok <- true;
 			loop c over: demand.keys{
 				loop u over: resources_A{
-					float quantity_needed <- behavior_input_output_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-					tick_consumption[u] <- tick_consumption[u] + quantity_needed;
+					float quantity_needed <- production_input_output_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
+					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
 					if(external_producers.keys contains u){ // if there is a known external producer for this product/good
 						bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
 						if not av{
@@ -138,6 +125,7 @@ species agricultural parent:bloc{
 						}
 					}
 				}
+				tick_production[c] <- tick_production[c] + demand[c];
 			}
 			return ok;
 		}
@@ -152,12 +140,12 @@ species agricultural parent:bloc{
 	
 		map<string,int> consumed <- [];
 		
-		map<string, float> get_tick_behaviors{
+		map<string, float> get_tick_consumptions{
 			return copy(consumed);
 		}
 		
 		init{
-			loop c over: behaviors_A{
+			loop c over: productions_A{
 				consumed[c] <- 0;
 			}
 		}
@@ -169,8 +157,9 @@ species agricultural parent:bloc{
 		}
 		
 		action consume(human h){ 
-		    string choice <- behaviors_A[rnd_choice(behavior_prop)]; // draw a behavior following the given distribution
-			consumed[choice] <- consumed[choice]+1;
+		    loop c over: consumption_qt.keys{
+		    	consumed[c] <- consumed[c]+consumption_qt[c];
+		    }
 		}
 	}
 	
@@ -213,8 +202,9 @@ species agricultural parent:bloc{
     }
     
     action end_tick{
-    	tick_behaviors_A <- get_tick_behaviors(); // collect consumption behaviors
+    	tick_pop_consumption_A <- get_tick_consumptions(); // collect consumption behaviors
     	tick_impacts_A <- get_tick_resources_used(); // collect resources used
+    	tick_production_A <- get_tick_production(); // collect production
    	}
     
 }
@@ -224,15 +214,20 @@ species agricultural parent:bloc{
  * We define here the experiment and the displays related to agricultural. 
  * We will then be able to run this experiment from the Main code of the simulation, with all the blocs connected.
  * 
- * Note : experiment car inherit another experiment, bu we can't combine displays from multiple experiments at the same time. 
+ * Note : experiment car inherit another experiment, but we can't combine displays from multiple experiments at the same time. 
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
  */
 experiment run_agricultural type: gui {
 	output {
 		display Agricultural_information {
-			chart "Population consumption" type: series  size: {1,0.5} position: {0, 0} {
-			    loop c over: behaviors_A{
-			    	data c value: tick_behaviors_A[c];
+			chart "Population direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
+			    loop c over: productions_A{
+			    	data c value: tick_pop_consumption_A[c]; // note : products consumed by other blocs NOT included here (only population direct consumption)
+			    }
+			}
+			chart "Total production" type: series  size: {0.5,0.5} position: {0.5, 0} {
+			    loop c over: productions_A{
+			    	data c value: tick_production_A[c];
 			    }
 			}
 			chart "Resources usage" type: series size: {1,0.5} position: {0, 0.5} {

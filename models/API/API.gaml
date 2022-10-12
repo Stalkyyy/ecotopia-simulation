@@ -7,10 +7,6 @@
 
 model API
 
-global{
-	// nothing here
-}
-
 species bloc{
 	string name; // the name of the bloc
 	production_agent producer; // the production agent of the bloc
@@ -27,8 +23,8 @@ species bloc{
 	/* Execute the consumption behavior of the population (cf consumption_agent) */
 	action population_activity(list<human> pop) virtual:true;
 	
-	/* Returns the possible behaviors of the population for this bloc */
-	action get_possible_behaviors virtual:true type:list<string>;
+	/* Returns the possible consumptions/behaviors of the population for this bloc */
+	action get_possible_consumptions virtual:true type:list<string>;
 	
 	/* Returns the resources that can be used (consumed of emitted) by this bloc */
 	action get_possible_resources_used virtual:true type:list<string>;
@@ -43,8 +39,11 @@ species production_agent{
 	/* Produce the given resources in the requested quantities */
 	action produce(map<string, float> demand) virtual:true type:bool;
 	
-	/* Returns all the resources consumed for the production this tick */
-	action get_tick_consumptions virtual:true type: map<string, float>;
+	/* Returns all the resources used for the production this tick */
+	action get_tick_resources_used virtual:true type: map<string, float>;
+	
+	/* Returns the amounts produced this tick */
+	action get_tick_production virtual:true type: map<string, float>;
 	
 	/* Defines an external producer for a resource */
 	action set_external_producer(string product, bloc bloc_agent) virtual:true; 
@@ -58,8 +57,8 @@ species consumption_agent{
 	/* Apply the consumption behavior of a given human */
 	action consume(human h) virtual:true;
 	
-	/* Returns all the behaviors applied this tick */
-	action get_tick_behaviors virtual:true type: map<string, float>;
+	/* Returns all the consumptions/behaviors applied this tick */
+	action get_tick_consumptions virtual:true type: map<string, float>;
 }
 	
 species human{
@@ -84,7 +83,7 @@ species coordinator{
 		list<string> products <- [];
 		ask b{
 			do setup; // setup the bloc
-			products <- get_possible_behaviors();
+			products <- get_possible_consumptions();
 		}
 		registered_blocs[name] <- b;
 		loop p over: products{ // register this bloc as producer of product p
@@ -150,4 +149,53 @@ species coordinator{
 	}
 
 }
+
+/* Territory species */
+
+species fronteers {
+	string type; 
+	rgb color <- #whitesmoke;
+	rgb border_color <- #dimgray;
+	aspect base {
+		draw shape color: color border: border_color;
+	}
+}
+
+species mountain {
+	string type; 
+	rgb color <- #silver;
+	
+	aspect base {
+		draw shape color: color ;
+	}
+}
+
+species forest {
+	string type; 
+	rgb color <- #mediumseagreen;
+	
+	aspect base {
+		draw shape color: color ;
+	}
+}
+
+species water_source {
+	string type; 
+	rgb color <- #royalblue;
+	
+	aspect base {
+		draw shape color: color ;
+	}
+}
+
+species city {
+	string type; 
+	rgb color <- #black;
+	
+	aspect base {
+		draw circle(2.0#px) color: color ;
+	}
+}
+
+
 
