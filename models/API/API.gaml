@@ -7,6 +7,9 @@
 
 model API
 
+/*
+ * Species used to represent a bloc.
+ */
 species bloc{
 	string name; // the name of the bloc
 	production_agent producer; // the production agent of the bloc
@@ -14,51 +17,50 @@ species bloc{
 	/* Initialize the bloc */
 	action setup virtual:true;
 	
-	/* Move to the next tick */
-	action new_tick virtual:true;
+	/* Execute the next tick */
+	action tick(list<human> pop) virtual:true;
 	
-	/* End to the current tick */
-	action end_tick virtual:true;
+	/* Returns the labels of the resources used by this bloc for production (inputs) */
+	action get_input_resources_labels virtual:true type:list<string>;
 	
-	/* Execute the consumption behavior of the population (cf consumption_agent) */
-	action population_activity(list<human> pop) virtual:true;
-	
-	/* Returns the possible consumptions/behaviors of the population for this bloc */
-	action get_possible_consumptions virtual:true type:list<string>;
-	
-	/* Returns the resources that can be used (consumed of emitted) by this bloc */
-	action get_possible_resources_used virtual:true type:list<string>;
+	/* Returns the labels of the resources produced by this bloc (outputs) */
+	action get_output_resources_labels virtual:true type:list<string>;
 	
 }
 
+/* 
+ * Species used to represent all the production of a bloc.
+ * Note : this species will be implemented as a micro-species of its bloc.
+ */
 species production_agent{
-
-	/* Move to the next tick */
-	action new_tick virtual:true;
 	
 	/* Produce the given resources in the requested quantities */
 	action produce(map<string, float> demand) virtual:true type:bool;
 	
 	/* Returns all the resources used for the production this tick */
-	action get_tick_resources_used virtual:true type: map<string, float>;
+	action get_tick_inputs_used virtual:true type: map<string, float>;
 	
 	/* Returns the amounts produced this tick */
-	action get_tick_production virtual:true type: map<string, float>;
+	action get_tick_outputs_produced virtual:true type: map<string, float>;
+	
+	/* Returns the amounts emitted this tick */
+	action get_tick_emissions virtual:true type: map<string, float>;
 	
 	/* Defines an external producer for a resource */
-	action set_external_producer(string product, bloc bloc_agent) virtual:true; 
+	action set_supplier(string product, bloc bloc_agent) virtual:true; 
 }
 
+/* 
+ * Species used to represent all the consumption of the population related to a bloc.
+ * Note : this species will be implemented as a micro-species of its bloc.
+ */
 species consumption_agent{
-	
-	/* Move to the next tick */
-	action new_tick virtual:true;
 	
 	/* Apply the consumption behavior of a given human */
 	action consume(human h) virtual:true;
 	
-	/* Returns all the consumptions/behaviors applied this tick */
-	action get_tick_consumptions virtual:true type: map<string, float>;
+	/* Returns the amount of resources consumed by the population this tick */
+	action get_tick_consumption virtual:true type: map<string, float>;
 }
 	
 species human{
@@ -83,7 +85,7 @@ species coordinator{
 		list<string> products <- [];
 		ask b{
 			do setup; // setup the bloc
-			products <- get_possible_consumptions();
+			products <- get_output_resources_labels();
 		}
 		registered_blocs[name] <- b;
 		loop p over: products{ // register this bloc as producer of product p
@@ -92,13 +94,13 @@ species coordinator{
 	}
 	
 	/* Affects the external producers (when a bloc needs the production of another bloc, this one is its exernal producer) */
-	action affect_external_producers{
+	action affect_suppliers{
 		loop b over: registered_blocs.values{
-			list<string> resources_used <- b.get_possible_resources_used();
+			list<string> resources_used <- b.get_input_resources_labels();
 			loop r over: resources_used{
 				if(producers.keys contains r){ // there is a known producer for this resource/good
 					ask b.producer {
-						do set_external_producer(r, myself.producers[r]); // link the external producer to the bloc needing it
+						do set_supplier(r, myself.producers[r]); // link the external producer to the bloc needing it
 					}
 				}
 			}
@@ -112,7 +114,7 @@ species coordinator{
 			do register_bloc(b.name, b); //register the bloc
 		}
 		write "registered blocs : "+registered_blocs;
-		do affect_external_producers();
+		do affect_suppliers();
 	}
 	
 	/* Start the simulation */
@@ -127,30 +129,18 @@ species coordinator{
 	
 	/* Reflex : move to the next tick of the simulation */
 	reflex new_tick when: started{
-		loop bloc_agent over:registered_blocs.values{ // move to next tick for all blocs
-			ask bloc_agent{
-				do new_tick;
-			}
-		}
 	
 		list<human> pop <- get_all_instances(human);
-		loop bloc_agent over:registered_blocs.values{
-			ask bloc_agent{
-				do population_activity(pop); // execute population activity for the current tick
-			}
-		}
 		
-		loop bloc_agent over:registered_blocs.values{
+		loop bloc_agent over:registered_blocs.values{ // move to next tick for all blocs
 			ask bloc_agent{
-				do end_tick; // end the tick for all blocs
+				do tick(pop);
 			}
 		}
-
 	}
-
 }
 
-/* Territory species */
+/* Territory species (used to represent GIS elements) */
 
 species fronteers {
 	string type; 

@@ -46,14 +46,11 @@ global{
 			do register_all_blocs; // register the blocs in the coordinator
 			do start; // start the simulation
 		}
-		
 	}
-
 }
 
 
 experiment display_gis type: gui {
-	
 	output {
 		display country_map type: java2D {
 			species fronteers aspect: base ;

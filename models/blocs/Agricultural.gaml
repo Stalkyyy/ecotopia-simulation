@@ -13,24 +13,39 @@ import "../API/API.gaml"
  * We define the input data used by the bloc.
  */
 global{
-
+	
 	/* Setup */
-	list productions_A <- ["kg_meat", "kg_vegetables"];
-	list resources_A <- ["L water", "kWh energy", "m² land", "gCO2e emissions"];
+	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables"];
+	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land"];
+	list<string> production_emissions_A <- ["gCO2e emissions"];
 	
-	/* Parameters */
-	map consumption_qt <- ["kg_meat"::5.2, "kg_vegetables"::12.5]; // monthly consumption per individual of the population. Note : this is fake data.
-	
-	/* Input data */
-	map production_input_output_A <- [
+	/* Production data */
+	map production_output_inputs_A <- [
 		"kg_meat"::["L water"::2500.0, "kWh energy"::450.0, "m² land"::500.0, "gCO2e emissions"::3500.0],
 		"kg_vegetables"::["L water"::900.0, "kWh energy"::175.0, "m² land"::100.0, "gCO2e emissions"::1000.0]
 	]; // Note : this is fake data (not the real amound of resources used and emitted)
+	map production_output_emissions_A <- [
+		"kg_meat"::["gCO2e emissions"::3500.0],
+		"kg_vegetables"::["gCO2e emissions"::1000.0]
+	]; // Note : this is fake data (not the real amound of resources used and emitted)
+	
+	
+	/* Consumption data */
+	map indivudual_consumption_A <- ["kg_meat"::5.2, "kg_vegetables"::12.5]; // monthly consumption per individual of the population. Note : this is fake data.
 	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
 	map<string, float> tick_pop_consumption_A <- [];
-	map<string, float> tick_impacts_A <- [];
+	map<string, float> tick_resources_used_A <- [];
+	map<string, float> tick_emissions_A <- [];
+	
+	init{ // a security added to avoid launching an experiment without the other blocs
+		if (length(coordinator) = 0){
+			error "Coordinator agent not found. Ensure you launched the experiment from the Main model";
+			// If you see this error when trying to run an experiment, this means the coordinator agent does not exist.
+			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
+		}
+	}
 }
 
 /**
@@ -44,125 +59,6 @@ species agricultural parent:bloc{
 	agri_producer producer <- nil;
 	agri_consumer consumer <- nil;
 	
-	action set_external_producer(string product, bloc bloc_agent){
-		ask producer{
-			do set_external_producer(product, bloc_agent);
-		}
-	}
-	
-	production_agent get_producer{
-		return producer;
-	}
-
-	list<string> get_possible_consumptions{
-		return productions_A;
-	}
-	
-	list<string> get_possible_resources_used{
-		return resources_A;
-	}
-	
-	map<string, float> get_tick_resources_used{
-		return producer.get_tick_resources_used();
-	}
-	
-	map<string, float> get_tick_consumptions{
-		return consumer.get_tick_consumptions();
-	}
-	
-	map<string, float> get_tick_production{
-		return producer.get_tick_production();
-	}
-	
-	
-	/**
-	 * We define here the production agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
-	 * We implement the methods of the API.
-	 * The production is very simple here : for each behavior, we apply an average resource consumption and emissions.
-	 * Some of those resources can be provided by other blocs (external producers).
-	 */
-	species agri_producer parent:production_agent{
-		map<string, bloc> external_producers; // external producers that provide the needed resources
-		map<string, float> tick_resources_used <- [];
-		map<string, float> tick_production <- [];
-		
-		init{
-			external_producers <- []; // external producers that provide the needed resources
-		}
-		
-		map<string, float> get_tick_resources_used{
-			return tick_resources_used;
-		}
-		
-		map<string, float> get_tick_production{
-			return tick_production;
-		}
-		
-		action set_external_producer(string product, bloc bloc_agent){
-			write name+": external producer "+bloc_agent+" set for "+product;
-			external_producers[product] <- bloc_agent;
-		}
-	
-		action new_tick{ // reset impact counters
-			loop u over: resources_A{
-				tick_resources_used[u] <- 0.0; // reset resources usage
-			}
-			loop p over: productions_A{
-				tick_production[p] <- 0.0; // reset productions
-			}
-		}
-		
-		bool produce(map<string,float> demand){
-			bool ok <- true;
-			loop c over: demand.keys{
-				loop u over: resources_A{
-					float quantity_needed <- production_input_output_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
-					if(external_producers.keys contains u){ // if there is a known external producer for this product/good
-						bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
-						if not av{
-							ok <- false;
-						}
-					}
-				}
-				tick_production[c] <- tick_production[c] + demand[c];
-			}
-			return ok;
-		}
-	}
-	
-	/**
-	 * We define here the consumption agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
-	 * We implement the methods of the API.
-	 * The consumption is very simple here : each behavior as a certain probability to be selected.
-	 */
-	species agri_consumer parent:consumption_agent{
-	
-		map<string,int> consumed <- [];
-		
-		map<string, float> get_tick_consumptions{
-			return copy(consumed);
-		}
-		
-		init{
-			loop c over: productions_A{
-				consumed[c] <- 0;
-			}
-		}
-		
-		action new_tick{ 
-    		loop c over: consumed.keys{ // reset choices counters
-    			consumed[c] <- 0;
-    		}
-		}
-		
-		action consume(human h){ 
-		    loop c over: consumption_qt.keys{
-		    	consumed[c] <- consumed[c]+consumption_qt[c];
-		    }
-		}
-	}
-	
 	action setup{
 		list<agri_producer> producers <- [];
 		list<agri_consumer> consumers <- [];
@@ -172,14 +68,46 @@ species agricultural parent:bloc{
 		consumer <- first(consumers);
 	}
 	
-	action new_tick{
+	action tick(list<human> pop) {
+		do collect_last_tick_data();
+		do population_activity(pop);
+	}
+	
+	action set_external_producer(string product, bloc bloc_agent){
+		ask producer{
+			do set_supplier(product, bloc_agent);
+		}
+	}
+	
+	production_agent get_producer{
+		return producer;
+	}
+
+	list<string> get_output_resources_labels{
+		return production_outputs_A;
+	}
+	
+	list<string> get_input_resources_labels{
+		return production_inputs_A;
+	}
+	
+	list<string> get_emissions_labels{
+		return production_emissions_A;
+	}
+	
+	action collect_last_tick_data{
 		if(cycle > 0){ // skip it the first tick
-	    	ask agri_consumer{ // prepare next tick on consumer side
-	    		do new_tick;
+			tick_pop_consumption_A <- consumer.get_tick_consumption(); // collect consumption behaviors
+	    	tick_resources_used_A <- producer.get_tick_inputs_used(); // collect resources used
+	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
+	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
+	    	
+	    	ask agri_consumer{ // prepare new tick on consumer side
+	    		do reset_tick_counters;
 	    	}
 	    	
-	    	ask agri_producer{ // prepare next tick on producer side
-	    		do new_tick;
+	    	ask agri_producer{ // prepare new tick on producer side
+	    		do reset_tick_counters;
 	    	}
     	}
 	}
@@ -200,13 +128,107 @@ species agricultural parent:bloc{
 		    }
     	}
     }
-    
-    action end_tick{
-    	tick_pop_consumption_A <- get_tick_consumptions(); // collect consumption behaviors
-    	tick_impacts_A <- get_tick_resources_used(); // collect resources used
-    	tick_production_A <- get_tick_production(); // collect production
-   	}
-    
+	
+	
+	/**
+	 * We define here the production agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
+	 * We implement the methods of the API.
+	 * The production is very simple here : for each behavior, we apply an average resource consumption and emissions.
+	 * Some of those resources can be provided by other blocs (external producers).
+	 */
+	species agri_producer parent:production_agent{
+		map<string, bloc> external_producers; // external producers that provide the needed resources
+		map<string, float> tick_resources_used <- [];
+		map<string, float> tick_production <- [];
+		map<string, float> tick_emissions <- [];
+		
+		init{
+			external_producers <- []; // external producers that provide the needed resources
+		}
+		
+		map<string, float> get_tick_inputs_used{
+			return tick_resources_used;
+		}
+		
+		map<string, float> get_tick_outputs_produced{
+			return tick_production;
+		}
+		
+		map<string, float> get_tick_emissions{
+			return tick_emissions;
+		}
+		
+		action set_supplier(string product, bloc bloc_agent){
+			write name+": external producer "+bloc_agent+" set for "+product;
+			external_producers[product] <- bloc_agent;
+		}
+	
+		action reset_tick_counters{ // reset impact counters
+			loop u over: production_inputs_A{
+				tick_resources_used[u] <- 0.0; // reset resources usage
+			}
+			loop p over: production_outputs_A{
+				tick_production[p] <- 0.0; // reset productions
+			}
+			loop e over: production_emissions_A{
+				tick_emissions[e] <- 0.0;
+			}
+		}
+		
+		bool produce(map<string,float> demand){
+			bool ok <- true;
+			loop c over: demand.keys{
+				loop u over: production_inputs_A{
+					float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
+					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+					if(external_producers.keys contains u){ // if there is a known external producer for this product/good
+						bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
+						if not av{
+							ok <- false;
+						}
+					}
+				}
+				loop e over: production_emissions_A{ // apply emissions
+					float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
+					tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
+				}
+				tick_production[c] <- tick_production[c] + demand[c];
+			}
+			return ok;
+		}
+	}
+	
+	/**
+	 * We define here the consumption agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
+	 * We implement the methods of the API.
+	 * The consumption is very simple here : each behavior as a certain probability to be selected.
+	 */
+	species agri_consumer parent:consumption_agent{
+	
+		map<string,int> consumed <- [];
+		
+		map<string, float> get_tick_consumption{
+			return copy(consumed);
+		}
+		
+		init{
+			loop c over: production_outputs_A{
+				consumed[c] <- 0;
+			}
+		}
+		
+		action reset_tick_counters{ 
+    		loop c over: consumed.keys{ // reset choices counters
+    			consumed[c] <- 0;
+    		}
+		}
+		
+		action consume(human h){ 
+		    loop c over: indivudual_consumption_A.keys{
+		    	consumed[c] <- consumed[c]+indivudual_consumption_A[c];
+		    }
+		}
+	}
 }
 
 
@@ -221,18 +243,23 @@ experiment run_agricultural type: gui {
 	output {
 		display Agricultural_information {
 			chart "Population direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
-			    loop c over: productions_A{
+			    loop c over: production_outputs_A{
 			    	data c value: tick_pop_consumption_A[c]; // note : products consumed by other blocs NOT included here (only population direct consumption)
 			    }
 			}
 			chart "Total production" type: series  size: {0.5,0.5} position: {0.5, 0} {
-			    loop c over: productions_A{
+			    loop c over: production_outputs_A{
 			    	data c value: tick_production_A[c];
 			    }
 			}
-			chart "Resources usage" type: series size: {1,0.5} position: {0, 0.5} {
-			    loop r over: resources_A{
-			    	data r value: tick_impacts_A[r];
+			chart "Resources usage" type: series size: {0.5,0.5} position: {0, 0.5} {
+			    loop r over: production_inputs_A{
+			    	data r value: tick_resources_used_A[r];
+			    }
+			}
+			chart "Production emissions" type: series size: {0.5,0.5} position: {0.5, 0.5} {
+			    loop e over: production_emissions_A{
+			    	data e value: tick_emissions_A[e];
 			    }
 			}
 	    }

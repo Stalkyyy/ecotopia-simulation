@@ -26,17 +26,117 @@ global{
 	int max_age_init <- 90; // max age of individuals at the start of the simulation
 	int max_age <- 105; // older people will systematically die
 	int delay_between_child <- 12; // minimum delay (in ticks) between two births from the same individual
-	int max_child <- 4; // maximum number of children (birth probability is 0 beyond
+	int max_child <- 4; // maximum number of children (birth probability is 0 beyond)
 	
 	/* Counters & Stats */
 	int nb_inds -> {length(individual)};
 	float births <- 0; // counter, accumulate the total number of births
 	float deaths <- 0; // counter, accumulate the total number of deaths
 	float men_per_woman <- 1.0; // ratio of available man per woman (will be updated during the simulation)
+	
+	init{ // a security added to avoid launching an experiment without the other blocs
+		if (length(coordinator) = 0){
+			error "Coordinator agent not found. Ensure you launched the experiment from the Main model";
+			// If you see this error when trying to run an experiment, this means the coordinator agent does not exist.
+			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
+		}
+	}
+}
+
+
+/**
+ * We define here the content of the demography bloc as a species.
+ * We implement the methods of the API. Some are empty (do nothing) because this bloc do not have consumption nor production.
+ * We also add methods specific to this bloc to handle the births and deaths in the population.
+ */
+species residents parent:bloc{
+	string name <- "residents";
+	
+	action setup{
+		do init_population;
+	}
+	
+	action tick(list<human> pop){
+		do collect_last_tick_data;
+		do update_deaths;
+		do update_births;
+		do increment_age;
+	}
+	
+	list<string> get_input_resources_labels{ 
+		return [];
+	}
+	
+	list<string> get_output_resources_labels{
+		return [];
+	}
+	
+	production_agent get_producer{
+		return nil;
+	}
+	
+	action collect_last_tick_data{ // update stats & measures
+		int nb_men <- individual count(not dead(each) and each.gender = male_gender);
+		int nb_woman <-  individual count(not dead(each)) - nb_men;
+		men_per_woman <- nb_men/nb_woman;
+	}
+	
+	action population_activity(list<human> pop){
+		// do nothing
+	}
+	
+	action set_external_producer(string product, production_agent prod_agent){
+		// do nothing
+	}
+	
+	action init_population{
+		create individual number:nb_init_individuals{
+			age <- rnd(min_age_init, max_age_init);
+			do update_demog_probas;
+		}
+	}
+
+	action update_births{
+		int new_births <- 0;
+		ask individual{
+			if(gender = female_gender and delay_next_child = 0 and flip(p_birth) and age > 15){ // women of childbearing age can have children
+				new_births <- new_births + 1;
+				child <- child + 1;
+				delay_next_child <- delay_between_child;
+			}
+		}
+		int nb_f <- individual count(each.gender=female_gender and not(dead(each)));
+		create individual number:new_births;
+		births <- births + new_births;
+	}
+	
+	action update_deaths{
+		ask individual{
+			if((age >= max_age) or flip(p_death)){ // every individual has a chance to die every month, or die by reaching max_age
+				deaths <- deaths +1;
+				do die;
+			}
+		}
+	}
+	
+	action increment_age{
+		ask individual{
+			if(ticks_before_birthday<=0){ // if the month it's the individual birth month, increment the age
+				age <- age +1;
+				ticks_before_birthday <- nb_ticks_per_year;
+				do update_demog_probas; // update the death and birth probabilities
+			}
+			else{
+				ticks_before_birthday <- ticks_before_birthday -1;
+			}
+			delay_next_child <- max(0, delay_next_child -1);
+		}
+	}
+
 }
 
 /**
- * We define the agents used in the demography bloc. We here ectends the 'human' species of the API to add some functionalities.
+ * We define the agents used in the demography bloc. We here extends the 'human' species of the API to add some functionalities.
  * Be careful to define features that will only be called within the demography block, in order to respect the API.
  * 
  * The demography of our population will here be based on death and birth probabilities.
@@ -96,96 +196,6 @@ species individual parent:human{
 		p_birth <- get_p_birth();
 		p_death <- get_p_death();
 	}
-}
-
-/**
- * We define here the content of the demography bloc as a species.
- * We implement the methods of the API. Some are empty (do nothing) because this bloc do not use consumptions nor productions.
- * We also add methods specific to this bloc to handle the births and deaths in the population.
- */
-species residents parent:bloc{
-	string name <- "residents";
-	
-	list<string> get_possible_consumptions{
-		return [];
-	}
-	
-	list<string> get_possible_resources_used{
-		return [];
-	}
-	
-	production_agent get_producer{
-		return nil;
-	}
-	
-	action setup{
-		do init_population;
-	}
-	
-	action new_tick{
-		do update_deaths;
-		do update_births;
-		do increment_age;
-	}
-	
-	action end_tick{ // update stats & measures
-		int nb_men <- individual count(not dead(each) and each.gender = male_gender);
-		int nb_woman <-  individual count(not dead(each)) - nb_men;
-		men_per_woman <- nb_men/nb_woman;
-	}
-	
-	action population_activity(list<human> pop){
-		// do nothing
-	}
-	
-	action set_external_producer(string product, production_agent prod_agent){
-		// do nothing
-	}
-	
-	action init_population{
-		create individual number:nb_init_individuals{
-			age <- rnd(min_age_init, max_age_init);
-			do update_demog_probas;
-		}
-	}
-
-	action update_births{
-		int new_births <- 0;
-		ask individual{
-			if(gender = female_gender and delay_next_child = 0 and flip(p_birth) and age > 15){
-				new_births <- new_births + 1;
-				child <- child + 1;
-				delay_next_child <- delay_between_child;
-			}
-		}
-		int nb_f <- individual count(each.gender=female_gender and not(dead(each)));
-		create individual number:new_births;
-		births <- births + new_births;
-	}
-	
-	action update_deaths{
-		ask individual{
-			if((age >= max_age) or flip(p_death)){
-				deaths <- deaths +1;
-				do die;
-			}
-		}
-	}
-	
-	action increment_age{
-		ask individual{
-			if(ticks_before_birthday<=0){
-				age <- age +1;
-				ticks_before_birthday <- nb_ticks_per_year;
-				do update_demog_probas; // update the death and birth probabilities
-			}
-			else{
-				ticks_before_birthday <- ticks_before_birthday -1;
-			}
-			delay_next_child <- max(0, delay_next_child -1);
-		}
-	}
-
 }
 
 /**
