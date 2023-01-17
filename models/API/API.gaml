@@ -73,6 +73,7 @@ species human{
 species coordinator{
 	map<string, bloc> registered_blocs <- []; // the blocs handled by the coordinator
 	map<string, bloc> producers <-[]; // the producer registered for each resource
+	list<string> scheduling <- []; // blocs execution order
 	bool started <- false; // the current state of the coordinator (started or waiting)
 
 	/* Returns all the agents of a given species and its subspecies */
@@ -106,14 +107,23 @@ species coordinator{
 			}
 		}
 	}
-	
+
+	/* Defines the scheduling of the different blocs */
+	action set_scheduling(list<string> scheduling_order){
+		scheduling <- scheduling_order;
+	}
+
 	/* Register all the blocs */
 	action register_all_blocs{
 		list<bloc> blocs <- get_all_instances(bloc);
+		
 		loop b over: blocs{
 			do register_bloc(b.name, b); //register the bloc
 		}
 		write "registered blocs : "+registered_blocs;
+		if length(scheduling) = 0{
+			scheduling <- blocs collect each.name; // set default scheduling order
+		}
 		do affect_suppliers();
 	}
 	
@@ -129,12 +139,17 @@ species coordinator{
 	
 	/* Reflex : move to the next tick of the simulation */
 	reflex new_tick when: started{
-	
-		list<human> pop <- get_all_instances(human);
-		
-		loop bloc_agent over:registered_blocs.values{ // move to next tick for all blocs
-			ask bloc_agent{
-				do tick(pop);
+
+		list<human> pop <- get_all_instances(human);	
+
+		loop bloc_name over: scheduling{ // move to next tick for all blocs, following the defined scheduling
+			if bloc_name in registered_blocs.keys{
+				ask registered_blocs[bloc_name]{
+					do tick(pop);
+				}
+			}else{
+				write "warning : bloc "+bloc_name+" not found !";
+				// if you have this warning, check that the name of the blocs in the scheduling are correct
 			}
 		}
 	}
