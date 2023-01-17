@@ -82,15 +82,18 @@ species coordinator{
 	}
 	
 	/* Register a bloc : it will be handled by the coordinator */
-	action register_bloc(string name, bloc b){
+	action register_bloc(bloc b){
 		list<string> products <- [];
 		ask b{
 			do setup; // setup the bloc
 			products <- get_output_resources_labels();
 		}
-		registered_blocs[name] <- b;
+		registered_blocs[b.name] <- b;
 		loop p over: products{ // register this bloc as producer of product p
 			producers[p] <- b;
+		}
+		if !(b.name in scheduling){
+			scheduling <- scheduling + b.name;
 		}
 	}
 	
@@ -118,7 +121,7 @@ species coordinator{
 		list<bloc> blocs <- get_all_instances(bloc);
 		
 		loop b over: blocs{
-			do register_bloc(b.name, b); //register the bloc
+			do register_bloc(b); //register the bloc
 		}
 		write "registered blocs : "+registered_blocs;
 		if length(scheduling) = 0{
