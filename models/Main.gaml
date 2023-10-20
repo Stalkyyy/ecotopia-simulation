@@ -17,6 +17,7 @@ import "blocs/Energy.gaml"
 global{
 	bool use_gis <- true; // use GIS or not (needed to spatialise, instanciate territory species, and to display the map)
 	float step <- 1 #month; // the simulation step is a month
+	bool enable_demography <- true; // true to activate the demography (births, deaths), else false
 	
 	// GIS files
 	file shape_file_cities <- file("../includes/shapefiles/cities_france.shp");
@@ -37,7 +38,9 @@ global{
 		}
 	
 		// instanciate the blocs (E, A and R blocs here):
-		create residents number:1;
+		create residents number:1{
+			enabled <- enable_demography; // enable or not the demography
+		}
 		create agricultural number:1;
 		create energy number:1;
 		create coordinator number:1; // instanciate the coordinator
@@ -49,7 +52,10 @@ global{
 	}
 }
 
-
+/**
+ * We define only one experiment in the main file : the display of the GIS. 
+ * Other displays are defined in the blocs experiments.
+ */
 experiment display_gis type: gui {
 	output {
 		display country_map type: java2D {

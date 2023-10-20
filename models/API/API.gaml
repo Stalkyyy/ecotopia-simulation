@@ -9,6 +9,10 @@ model API
 
 /*
  * Species used to represent a bloc.
+ * A bloc as the following main functions :
+ *  - be the interface between its producers and the other blocs
+ *  - define the consumption behavior of the population related to this bloc
+ * See the example blocs supplied alongside the API for more details.
  */
 species bloc{
 	string name; // the name of the bloc
@@ -31,10 +35,11 @@ species bloc{
 /* 
  * Species used to represent all the production of a bloc.
  * Note : this species will be implemented as a micro-species of its bloc.
+ * See the example blocs supplied alongside the API for more details.
  */
 species production_agent{
 	
-	/* Produce the given resources in the requested quantities */
+	/* Produce the given resources in the requested quantities. Return true in case of success. */
 	action produce(map<string, float> demand) virtual:true type:bool;
 	
 	/* Returns all the resources used for the production this tick */
@@ -51,12 +56,14 @@ species production_agent{
 }
 
 /* 
- * Species used to represent all the consumption of the population related to a bloc.
+ * Species used to detail the consumption behavior of the population, related to a bloc.
+ * Every tick, this behavior will be applied to all the individuals of the population.
  * Note : this species will be implemented as a micro-species of its bloc.
+ * See the example blocs supplied alongside the API for more details.
  */
 species consumption_agent{
 	
-	/* Apply the consumption behavior of a given human */
+	/* Apply the consumption behavior of a given human. Return true in case of success. */
 	action consume(human h) virtual:true;
 	
 	/* Returns the amount of resources consumed by the population this tick */
@@ -70,6 +77,15 @@ species human{
 }
 
 
+/* 
+ * Species used to implement the coordinator agent of the simulation.
+ * This is a unique agent in charge of the following tasks :
+ * - register all the instanciated blocs
+ * - link the producers with their suppliers
+ * - execute each tick, coordinating blocs and other agents
+ * This agent is not intended to be modified. If this is the case, please check beforehand the possible 
+ * side effects of the modifications on the system as a whole.
+ */
 species coordinator{
 	map<string, bloc> registered_blocs <- []; // the blocs handled by the coordinator
 	map<string, bloc> producers <-[]; // the producer registered for each resource

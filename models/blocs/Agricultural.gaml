@@ -9,8 +9,7 @@ model Agricultural
 import "../API/API.gaml"
 
 /**
- * We define here the global variables of the bloc. Some are needed for the displays (charts, series...).
- * We define the input data used by the bloc.
+ * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
 global{
 	
