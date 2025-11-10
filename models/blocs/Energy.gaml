@@ -14,15 +14,15 @@ import "../API/API.gaml"
 global{
 
 	/* Setup */
-	list production_inputs_E <- ["L water", "m² land"];
-	list production_outputs_E <- ["kWh energy"];
-	list production_emissions_E <- ["gCO2e emissions"];
+	list<string> production_inputs_E <- ["L water", "m² land"];
+	list<string> production_outputs_E <- ["kWh energy"];
+	list<string> production_emissions_E <- ["gCO2e emissions"];
 	
 	/* Production data */
-	map production_output_inputs_E <- [
+	map<string, map<string, float>> production_output_inputs_E <- [
 		"kWh energy"::["L water"::80.0, "m² land"::25.0]
 	]; // Note : this is fake data (not the real amound of resources used and emitted).
-	map production_output_emissions_E <- [
+	map<string, map<string, float>> production_output_emissions_E <- [
 		"kWh energy"::["gCO2e emissions"::120.0]
 	];
 	
