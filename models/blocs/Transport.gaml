@@ -71,7 +71,7 @@ global{
 			"quantity"::500000000, // 500M seems like a good ceiling
 			"capacity"::1, // in person ?
 			"consumption"::0, // in kWh per km
-			"lifetime"::0, // in months
+			"lifetime"::1, // in months
 			"emissions"::0 // GES per km
 		]
 	];
@@ -104,6 +104,7 @@ global{
 	map<string, float> tick_resources_used_T <- [];
 	map<string, float> tick_emissions_T <- [];
 	map<string, float> tick_vehicle_usage_T <- []; // usage of each vehicle this tick in km/kg or km/pers
+	map<string, int> tick_vehicle_available_T <- [];
 
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -134,6 +135,12 @@ species transport parent:bloc{
 	// TODO: implement all the logic for resetting at each tick, and for creating new vehicles when in the negatives
 	map<string, float> number_of_vehicles_available <- []; // initialized in setup()
 
+	// true for method 1, false for method 2 (cf explanations for lifespan methods)
+	bool vehicle_lifespan_method <- false;
+	// method 1 for lifespan
+	// ages (in ticks) for each vehicles
+	map<string, list<int>> vehicles_age <- [];
+
 
 	// name of the bloc :
 	string name <- "transport";
@@ -148,6 +155,33 @@ species transport parent:bloc{
 		loop v over:vehicles{
 			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
 			number_of_vehicles_available[v] <- vehicle_data[v]["quantity"];
+			
+			if vehicle_lifespan_method{
+				// initializing the lifespan of vehicles in method 1 : uniform distribution of age
+				if (v = "walk"){
+					continue;
+				}
+				vehicles_age[v] <- [];
+				int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
+				int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
+				int remainder <- number_of_vehicles[v] mod number_of_ticks;
+				list<int> first_half <- [];
+				list<int> second_half <- [];
+				loop tick from: 0 to: remainder{
+					add (number_of_vehicles_per_tick + 1) to: first_half ;
+				}
+				loop tick from: 0 to: number_of_ticks - remainder - 1{
+					add (number_of_vehicles_per_tick) to: second_half ;
+				}
+				vehicles_age[v] <- first_half + second_half;
+//					if (tick < remainder) {
+//						vehicles_age[v][tick] <- number_of_vehicles_per_tick + 1;
+//					}
+//					else {
+//						vehicles_age[v][tick] <- number_of_vehicles_per_tick;
+//					}
+				
+			}
 		}
 
 		list<transport_producer> producers <- [];
@@ -162,6 +196,7 @@ species transport parent:bloc{
 	// then we calculate the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
 	action tick(list<human> pop){
 		do collect_last_tick_data();
+		do update_vehicle_numbers();
 		do population_activity(pop);
 	}
 	
@@ -200,6 +235,7 @@ species transport parent:bloc{
 	    	tick_production_T <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_T <- producer.get_tick_emissions(); // collect emissions
 	    	tick_vehicle_usage_T <- producer.get_tick_vehicle_usage(); // collect vehicle usage
+	    	tick_vehicle_available_T <- number_of_vehicles; // collect total number of vehicles
 	    	
 	    	ask transport_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -209,6 +245,55 @@ species transport parent:bloc{
 	    		do reset_tick_counters;
 	    	}
     	}
+	}
+	
+	// updates the lifespan of vehicles
+	// 2 structures proposed :
+	// 1) storing for each vehicle a map with the number of vehicles from a given tick up to the lifespan
+	// 2) removing a certain percentage of vehicles each tick
+	action update_vehicle_numbers{
+		if vehicle_lifespan_method {
+			// Method 1 :
+			loop v over:vehicles{
+				if (v = "walk"){
+					continue;
+				}
+				// get the number of vehicles removed this tick
+				int vehicles_removed <- last(vehicles_age[v]);
+				// reduce the total amount of vehicles known
+				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
+				// remove the oldest vehicles from the lifespan list
+				remove from:vehicles_age[v] index:length(vehicles_age[v])-1;
+				// add 0 new vehicles at tick 0 age
+				add item:0 to: vehicles_age[v] at: 0;
+			}
+		}
+		else {
+			// Method 2 :
+			loop v over:vehicles{
+				if (v = "walk"){
+					continue;
+				}
+				// get the number of vehicles removed this tick
+				int vehicles_removed <- int(number_of_vehicles[v] * (1/vehicle_data[v]["lifetime"]));
+				// reduce the total amount of vehicles known
+				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
+			}
+		}
+	}
+	
+	// creates new vehicles, for now no ressources used //TODO: in MICRO
+	action create_new_vehicles(string type, int quantity){
+		if not(type in vehicles){
+			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
+			return;
+		}
+		number_of_vehicles[type] <- number_of_vehicles[type] + quantity;
+		number_of_vehicles_available[type] <- number_of_vehicles_available[type] + quantity; 
+		// if using method 1 for lifespan, add it to the lifespan list
+		if vehicle_lifespan_method {
+			vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
+		}
 	}
 	
 	// calculates the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
@@ -405,6 +490,11 @@ experiment run_transport type: gui {
 			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, 0} {
 			    loop v over: vehicles {
 			    	data v value: tick_vehicle_usage_T[v];
+			    }
+			}
+			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.75, 0.5} y_log_scale:true {
+			    loop v over: (vehicles) {
+			    	data v value: tick_vehicle_available_T[v];
 			    }
 			}
 	    }
