@@ -16,7 +16,14 @@ global{
 
 	/* Setup */
 	list<string> production_inputs_T <- ["kWh energy"];
-	list<string> production_outputs_T <- ["km/person_scale_1_transport", "km/person_scale_2_transport", "km/person_scale_3_transport","km/kg_scale_1_transport","km/kg_scale_2_transport","km/kg_scale_3_transport"];
+	list<string> production_outputs_T <- [
+		"km/person_scale_1",
+		"km/person_scale_2",
+		"km/person_scale_3",
+		"km/kg_scale_1",
+		"km/kg_scale_2",
+		"km/kg_scale_3"
+	];
 	list<string> production_emissions_T <- ["gCO2e emissions"];
 	
 	/* DATA */
@@ -69,33 +76,26 @@ global{
 		]
 	];
 	
+	map<string, map<string, float>> modal_split <- [
+		"km/person_scale_1" :: ["train"::0.95, "taxi"::0.05], // no taxi if we follow slides
+		"km/kg_scale_1"     :: ["truck"::1.0],
+		
+		"km/person_scale_2" :: ["train"::0.90, "taxi"::0.10],
+		"km/kg_scale_2"     :: ["truck"::1.0], 
+		
+		"km/person_scale_3" :: ["walk"::0.50, "taxi"::0.10, "bicycle"::0.30, "minibus"::0.10],
+		"km/kg_scale_3"     :: ["truck"::1.0]
+		// TODO values are kinda random, find good parameters, and maybe change by distance too
+	];
 	
-	/* Production data */ //TODO: remove
-	map<string, map<string, float>> production_output_inputs_T <- [
-		"km/person_scale_1_transport"::["kWh energy"::20.0],
-		"km/person_scale_2_transport"::["kWh energy"::400.0],
-		"km/person_scale_3_transport"::["kWh energy"::200.0],
-		"km/kg_scale_1_transport"::["kWh energy"::10.0],
-		"km/kg_scale_2_transport"::["kWh energy"::20.0],
-		"km/kg_scale_3_transport"::["kWh energy"::15.0]
-	]; // Note : this is fake data (not the real amound of resources used and emitted)
-	map<string, map<string, float>> production_output_emissions_T <- [
-		"km/person_scale_1_transport"::["gCO2e emissions"::100.0],
-		"km/person_scale_2_transport"::["gCO2e emissions"::200.0],
-		"km/person_scale_3_transport"::["gCO2e emissions"::150.0],
-		"km/kg_scale_1_transport"::["gCO2e emissions"::1.0],
-		"km/kg_scale_2_transport"::["gCO2e emissions"::2.0],
-		"km/kg_scale_3_transport"::["gCO2e emissions"::1.5]
-	]; // Note : this is fake data (not the real amound of resources used and emitted)
-	
-	/* Consumption data *///TODO: remove
+	/* Consumption data *///TODO: remove, although useful for fake simulation without block connections
 	map<string, float> indivudual_consumption_T <- [
-	"km/person_scale_1_transport"::10.0,
-	"km/person_scale_2_transport"::50.0,
-	"km/person_scale_3_transport"::500.0,
-	"km/kg_scale_1_transport"::1000.0,
-	"km/kg_scale_2_transport"::5000.0,
-	"km/kg_scale_3_transport"::5000.0
+	"km/person_scale_1"::10.0,
+	"km/person_scale_2"::50.0,
+	"km/person_scale_3"::500.0,
+	"km/kg_scale_1"::1000.0,
+	"km/kg_scale_2"::5000.0,
+	"km/kg_scale_3"::5000.0
 	]; // monthly consumption per individual of the population. Note : this is fake data.
 	
 	/* Counters & Stats *///TODO: change to the right metrics
@@ -296,85 +296,49 @@ species transport parent:bloc{
 				return "train";
 			}
 		}
-
-		// returns the amount of energy used by a given vehicle type, quantity, and distance
-
-		/** produce ressources to answer a demand in transport 
-		 * parameters :
-		 * - type : string ("material" ou "person")
-		 * - quantity : float (in kg or number of people)
-		 * - scale : int (1, 2, or 3) (1 : France, 2 : inter-regions or outside mini-cities, 3 : in mini-city)
-		 * - distance : float (in km)
-		 * 
-		 * returns : true, unless an argument is invalid in which case it will return early false (will also generate a warning)  
-		 */   
-		bool produce_transport(string type, float quantity, int scale, float distance){
-			// test inputs :
-			if ((type != "material") and (type != "person")) {
-				warn "Warning from " + self + " : the parameter 'type' is invalid, it should be 'material' or 'person', but '"+ type +"' was received instead";
-				return false;
-			}
-			if (scale > 3 or scale < 1){
-				warn "Warning from " + self + " : the parameter 'scale' is invalid, it should be 1, 2, or 3, but "+ scale +" was received instead";
-				return false;
-			}
-			
-			// for now we don't differenciate the scales, TODO: implement the 3 scales
-			
-			// vehicle used
-			string vehicle_used <- "truck";
-			if (type = "person"){
-				 vehicle_used <- get_vehicle_used(distance);
-			}
-			
-			// we calculate the number of vehicles used for this transport
-			float number_of_vehicles_used <- quantity / vehicle_data[type]["capacity"];
-
-			// update the number of vehicles left available, TODO: implement vehicle creation for when there is a negative number of vehicles left
-			number_of_vehicles_available[type] <- number_of_vehicles_available[type] - number_of_vehicles_used;
-			
-			// calculate energy used
-			float energy_used <- number_of_vehicles_used * vehicle_data[type]["consumption"] * distance;
-			
-			// make energy demand
-			string energy_label <- "kWh energy";
-			if(external_producers.keys contains energy_label){ // if there is a known external producer for energy
-				bool av <- external_producers[energy_label].producer.produce([energy_label::energy_used]); // ask the external producer to product the required quantity
-				if not av{
-					write("[Transport] : we received false from the Energy Block when requesting for energy, is this normal ?");
-				}
-			}
-			
-			// make emissions
-			string emission_label <- "gCO2e emissions";
-			float quantity_emitted <- number_of_vehicles_used * vehicle_data[type]["emissions"] * distance;
-			tick_emissions[emission_label] <- tick_emissions[emission_label] + quantity_emitted;
-			
-			return true;
-		}
 		
 		// produce ressources to answer a demand in transport 
-		// THIS IS THE OLD VERSION BASED ON THE OTHER BLOCKS INITIAL CODE, THIS WILL BE REMOVED/MODIFIED
 		bool produce(map<string,float> demand){
-			bool ok <- true;
-			loop c over: demand.keys{
-				loop u over: production_inputs_T{
-					float quantity_needed <- production_output_inputs_T[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
-					if(external_producers.keys contains u){ // if there is a known external producer for this product/good
-						bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
-						if not av{
-							ok <- false;
-						}
+			bool global_success <- true;
+			
+			// Temp variable to accumulate needs of this tick
+			float total_energy_needed <- 0.0;
+			
+			loop service over: demand.keys{
+				float quantity_asked <- demand[service]; // already in km*pers or km*kg
+				
+				tick_production[service] <- tick_production[service] + quantity_asked; // "we have produced this service"
+				
+				map<string, float> split <- modal_split[service]; // get vehicle mix for this service
+				
+				if (split != nil) {
+					loop vehicle_name over: split.keys {
+						float share <- split[vehicle_name];
+						float sub_quantity <- quantity_asked * share;
+						
+						map<string, float> specs <- vehicle_data[vehicle_name];
+						
+						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
+						float vehicle_km <- sub_quantity / specs["capacity"];
+						
+						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
+						float emissions <- vehicle_km * specs["emissions"];
+						tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
 					}
 				}
-				loop e over: production_emissions_T{ // apply emissions
-					float quantity_emitted <- production_output_emissions_T[c][e] * demand[c];
-					tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
-				}
-				tick_production[c] <- tick_production[c] + demand[c];
 			}
-			return ok;
+			tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + total_energy_needed;
+			
+			if (total_energy_needed > 0 and external_producers contains_key "kWh energy"){
+				// Here we ask Energy for electricity. I don't know if this will be how we do it in the end.
+				bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
+				if (!energy_ok) {
+					global_success <- false;
+					// BAD not enough energy !! or smth
+				}
+			}
+			
+			return global_success;
 		}
 	}
 	
@@ -421,24 +385,29 @@ species transport parent:bloc{
 experiment run_transport type: gui {
 	output {
 		display Transport_information {
-			chart "Population direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
-			    loop c over: production_outputs_T{
-			    	data c value: tick_pop_consumption_T[c]; // note : products consumed by other blocs NOT included here (only population direct consumption)
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {0, 0} {
+			    loop c over: production_outputs_T {
+			    	// show km per scale
+			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
-			chart "Total production" type: series  size: {0.5,0.5} position: {0.5, 0} {
-			    loop c over: production_outputs_T{
+			
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.5, 0} {
+			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
 			}
-			chart "Resources usage" type: series size: {0.5,0.5} position: {0, 0.5} {
-			    loop r over: production_inputs_T{
-			    	data r value: tick_resources_used_T[r];
+			
+			chart "Resources usage (Energy)" type: series size: {0.5,0.5} position: {0, 0.5} {
+			    loop r over: production_inputs_T {
+			    	// Affiche les kWh consommés
+			    	data r value: tick_resources_used_T[r] color: #red;
 			    }
 			}
-			chart "Production emissions" type: series size: {0.5,0.5} position: {0.5, 0.5} {
-			    loop e over: production_emissions_T{
-			    	data e value: tick_emissions_T[e];
+			
+			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.5, 0.5} {
+			    loop e over: production_emissions_T {
+			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
 	    }
