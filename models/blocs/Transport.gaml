@@ -90,12 +90,12 @@ global{
 	
 	/* Consumption data *///TODO: remove, although useful for fake simulation without block connections
 	map<string, float> indivudual_consumption_T <- [
-	"km/person_scale_1"::10.0,
-	"km/person_scale_2"::50.0,
-	"km/person_scale_3"::500.0,
-	"km/kg_scale_1"::1000.0,
+	"km/person_scale_1"::500.0,
+	"km/person_scale_2"::100.0,
+	"km/person_scale_3"::20.0,
+	"km/kg_scale_1"::5000.0,
 	"km/kg_scale_2"::5000.0,
-	"km/kg_scale_3"::5000.0
+	"km/kg_scale_3"::1000.0
 	]; // monthly consumption per individual of the population. Note : this is fake data.
 	
 	/* Counters & Stats *///TODO: change to the right metrics
@@ -103,6 +103,7 @@ global{
 	map<string, float> tick_pop_consumption_T <- [];
 	map<string, float> tick_resources_used_T <- [];
 	map<string, float> tick_emissions_T <- [];
+	map<string, float> tick_vehicle_usage_T <- []; // usage of each vehicle this tick in km/kg or km/pers
 
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -198,6 +199,7 @@ species transport parent:bloc{
 	    	tick_resources_used_T <- producer.get_tick_inputs_used(); // collect resources used
 	    	tick_production_T <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_T <- producer.get_tick_emissions(); // collect emissions
+	    	tick_vehicle_usage_T <- producer.get_tick_vehicle_usage(); // collect vehicle usage
 	    	
 	    	ask transport_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -237,7 +239,8 @@ species transport parent:bloc{
 		map<string, bloc> external_producers; // Energy Bloc 
 		map<string, float> tick_resources_used <- []; // ressources used during this tick to make transport ressources (energy)
 		map<string, float> tick_production <- []; // transport ressources created during this tick
-		map<string, float> tick_emissions <- []; // emissions produced during this tick
+		map<string, float> tick_emissions <- []; // emissions produced during this tick 
+		map<string, float> tick_vehicle_usage <- []; // vehicle usage this tick in km/kg or km/person
 		
 		init{
 			external_producers <- []; // external producers that provide the needed resources
@@ -258,6 +261,11 @@ species transport parent:bloc{
 			return tick_emissions;
 		}
 		
+		/* Returns the  */
+		map<string, float> get_tick_vehicle_usage{
+			return tick_vehicle_usage;
+		}
+		
 		/* Defines an external producer for a resource (Energy Bloc) */
 		action set_supplier(string product, bloc bloc_agent){
 			write name+": external producer "+bloc_agent+" set for "+product;
@@ -275,25 +283,8 @@ species transport parent:bloc{
 			loop e over: production_emissions_T{
 				tick_emissions[e] <- 0.0;
 			}
-		}
-		
-		// returns the vehicle used by a person based on the distance travelled
-		// TODO: improve modelisation by using accurate numbers, maybe even take the quantity of people in parameter and return a proportion of the usage for each vehicle based on the distance 
-		string get_vehicle_used(float distance){
-			if (distance < 0.2) {
-				return "walk";
-			}
-			else if (distance < 1.0){
-				return "bicycle";
-			}
-			else if (distance < 4.0){
-				return "minibus";
-			}
-			else if (distance < 50.0){
-				return "taxi";
-			}
-			else {
-				return "train";
+			loop v over: vehicles{
+				tick_vehicle_usage[v] <- 0.0;
 			}
 		}
 		
@@ -320,6 +311,7 @@ species transport parent:bloc{
 						
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
 						float vehicle_km <- sub_quantity / specs["capacity"];
+						tick_vehicle_usage[vehicle_name] <- tick_vehicle_usage[vehicle_name] + vehicle_km;
 						
 						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
 						float emissions <- vehicle_km * specs["emissions"];
@@ -385,29 +377,34 @@ species transport parent:bloc{
 experiment run_transport type: gui {
 	output {
 		display Transport_information {
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {0, 0} {
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, 0} {
 			    loop c over: production_outputs_T {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
 			
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.5, 0} {
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, 0} {
 			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
 			}
 			
-			chart "Resources usage (Energy)" type: series size: {0.5,0.5} position: {0, 0.5} {
+			chart "Resources usage (Energy)" type: series size: {0.5,0.5} position: {-0.25, 0.5} {
 			    loop r over: production_inputs_T {
 			    	// Affiche les kWh consommés
 			    	data r value: tick_resources_used_T[r] color: #red;
 			    }
 			}
 			
-			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.5, 0.5} {
+			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.25, 0.5} {
 			    loop e over: production_emissions_T {
 			    	data e value: tick_emissions_T[e] color: #black;
+			    }
+			}
+			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, 0} {
+			    loop v over: vehicles {
+			    	data v value: tick_vehicle_usage_T[v];
 			    }
 			}
 	    }
