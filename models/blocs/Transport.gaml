@@ -33,43 +33,43 @@ global{
 	// TODO: also maybe read them from a csv or something
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
-			"quantity"::1000, // number of vehicles available in france
-			"capacity"::5000, // in kg (on average, not always full)
-			"consumption"::1000, // in kWh per km
-			"lifetime"::600, // in months
-			"emissions"::1000 // GES per km
+			"quantity"::600000, // number of vehicles available in france
+			"capacity"::13000, // in kg (on average, not always full)
+			"consumption"::1, // in kWh per km
+			"lifetime"::180, // in months
+			"emissions"::2 // GES per km
 		],
 		"train"::[
-			"quantity"::1000, // number of vehicles available in france
-			"capacity"::100, // in persons (on average, not always full)
-			"consumption"::1000, // in kWh per km
-			"lifetime"::600, // in months
-			"emissions"::1000 // GES per km
-		],
-		"taxi"::[
-			"quantity"::1000, // number of vehicles available in france
-			"capacity"::3, // in persons (on average, not always full)
-			"consumption"::1000, // in kWh per km
-			"lifetime"::600, // in months
-			"emissions"::1000 // GES per km
-		],
-		"minibus"::[
-			"quantity"::1000, // number of vehicles available in france
-			"capacity"::10, // in persons (on average, not always full)
-			"consumption"::1000, // in kWh per km
-			"lifetime"::600, // in months
-			"emissions"::1000 // GES per km
-		],
-		"bicycle"::[
-			"quantity"::10000, // number of vehicles available in france
-			"capacity"::1, // in persons (on average, not always full)
-			"consumption"::1000, // in kWh per km
-			"lifetime"::600, // in months
+			"quantity"::5000, // number of vehicles available in france
+			"capacity"::300, // in persons (on average, not always full)
+			"consumption"::15, // in kWh per km
+			"lifetime"::480, // in months
 			"emissions"::10 // GES per km
 		],
-		"walk"::[
-			"quantity"::1, // number of vehicles available in france
+		"taxi"::[
+			"quantity"::63000, // number of vehicles available in france
+			"capacity"::3, // in persons (on average, not always full, not counting driver if there is one)
+			"consumption"::0.1, // in kWh per km
+			"lifetime"::60, // in months
+			"emissions"::1 // GES per km
+		],
+		"minibus"::[
+			"quantity"::50000, // number of vehicles available in france
+			"capacity"::10, // in persons (on average, not always full)
+			"consumption"::1, // in kWh per km
+			"lifetime"::120, // in months
+			"emissions"::2 // GES per km
+		],
+		"bicycle"::[
+			"quantity"::36000000, // number of vehicles available in france
 			"capacity"::1, // in persons (on average, not always full)
+			"consumption"::0.001, // in kWh per km (electric bike 0.01?)
+			"lifetime"::180, // in months
+			"emissions"::0 // GES per km
+		],
+		"walk"::[
+			"quantity"::500000000, // 500M seems like a good ceiling
+			"capacity"::1, // in person ?
 			"consumption"::0, // in kWh per km
 			"lifetime"::0, // in months
 			"emissions"::0 // GES per km
