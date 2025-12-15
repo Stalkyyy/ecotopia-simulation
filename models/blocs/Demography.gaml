@@ -29,7 +29,7 @@ global{
 	/* Parameters */ 
 	float coeff_birth <- 1.0; // a parameter that can be used to increase or decrease the birth probability
 	float coeff_death <- 1.0; // a parameter that can be used to increase or decrease the death probability
-	int nb_init_individuals <- 10000; // pop size
+	int nb_init_individuals <- 1000; // pop size
 	
 	/* Counters & Stats */
 	int nb_inds -> {length(individual)};
