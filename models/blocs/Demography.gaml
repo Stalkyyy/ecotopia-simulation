@@ -83,11 +83,11 @@ species residents parent:bloc{
 	}
 	
 	list<string> get_input_resources_labels{ 
-		return []; // no resources for demography component (function declared only to respect bloc API)
+		return ["kg_meat", "kg_vegetables", "L_water", "available_housing"];
 	}
 	
 	list<string> get_output_resources_labels{
-		return []; // no resources for demography component (function declared only to respect bloc API)
+		return ["nb_individuals", "food_demand", "transport_demand", "housing_demand"];
 	}
 	
 	production_agent get_producer{
@@ -129,6 +129,17 @@ species residents parent:bloc{
 		int nb_f <- individual count(each.gender=female_gender and not(dead(each)));
 		create individual number:new_births;
 		births <- births + new_births;
+	}
+
+	action mortality_by_calories{
+		a = 0.0007;
+		b = 0.004;
+		R = 400;
+		u = 0.00004;
+		ask individual{
+			float calorie_intake <- myself.get_calorie_intake();
+			float p_death_cal <- u + a * (1 / (1 + exp(b*(calorie_intake-R))));
+		}
 	}
 	
 	/* apply deaths*/
