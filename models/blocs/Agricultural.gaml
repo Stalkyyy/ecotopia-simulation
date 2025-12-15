@@ -14,29 +14,34 @@ import "../API/API.gaml"
 global{
 	
 	/* Setup */
-	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables"];
-	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land"];
+	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables", "kg_cotton"];
+	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land", "km/kg_scale_2"];
 	list<string> production_emissions_A <- ["gCO2e emissions"];
 	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
-		"kg_meat"::["L water"::2500.0, "kWh energy"::450.0, "m² land"::500.0, "gCO2e emissions"::3500.0],
-		"kg_vegetables"::["L water"::900.0, "kWh energy"::175.0, "m² land"::100.0, "gCO2e emissions"::1000.0]
+		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "gCO2e emissions"::27.0, "km/kg_scale_2"::0.0],
+		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "gCO2e emissions"::0.4, "km/kg_scale_2"::0.0],
+		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "gCO2e emissions"::4.7, "km/kg_scale_2"::0.0]
 	]; // Note : this is fake data (not the real amound of resources used and emitted)
 	map<string, map<string, float>> production_output_emissions_A <- [
-		"kg_meat"::["gCO2e emissions"::3500.0],
-		"kg_vegetables"::["gCO2e emissions"::1000.0]
+		"kg_meat"::["gCO2e emissions"::27.0],
+		"kg_vegetables"::["gCO2e emissions"::0.4],
+		"kg_cotton"::["gCO2e emissions"::4.7]
 	]; // Note : this is fake data (not the real amound of resources used and emitted)
 	
 	
 	/* Consumption data */
-	map<string, float> indivudual_consumption_A <- ["kg_meat"::5.2, "kg_vegetables"::12.5]; // monthly consumption per individual of the population. Note : this is fake data.
+	float vegetarian_proportion <- 0.022;
+	map<string, float> indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)]; // monthly consumption per individual of the population. Note : this is fake data.
 	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
 	map<string, float> tick_pop_consumption_A <- [];
 	map<string, float> tick_resources_used_A <- [];
 	map<string, float> tick_emissions_A <- [];
+	
+	int distance <- 50;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -177,6 +182,7 @@ species agricultural parent:bloc{
 		bool produce(map<string,float> demand){
 			bool ok <- true;
 			loop c over: demand.keys{
+				production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
 				loop u over: production_inputs_A{
 					float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
 					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
@@ -187,6 +193,7 @@ species agricultural parent:bloc{
 						}
 					}
 				}
+
 				loop e over: production_emissions_A{ // apply emissions
 					float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
 					tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
@@ -195,6 +202,7 @@ species agricultural parent:bloc{
 			}
 			return ok;
 		}
+		
 	}
 	
 	/**
@@ -224,8 +232,23 @@ species agricultural parent:bloc{
 		
 		action consume(human h){ 
 		    loop c over: indivudual_consumption_A.keys{
-		    	consumed[c] <- consumed[c]+indivudual_consumption_A[c];
+		    	if(c != "kg_cotton"){
+		    		consumed[c] <- consumed[c]+indivudual_consumption_A[c];
+		    	}
 		    }
+		    
+		    // Pour tuer les humains qui n'ont pas mangé
+		    /*
+		    map<string, float> production_totale;
+		    ask agri_producer {
+		    	production_totale <- get_tick_outputs_produced();
+		    }
+		    
+		    if(consumed["kg_meat"] > production_totale["kg_meat"] and consumed["kg_vegetables"] > production_totale["kg_vegetables"]){
+		    	ask h { do die; }
+		    }
+		    
+		    */
 		}
 	}
 }
