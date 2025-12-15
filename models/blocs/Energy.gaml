@@ -514,7 +514,7 @@ species energy parent:bloc {
 				tick_emissions["gCO2e emissions"] <- actual_production * emissions_per_kwh;
 			}
 			
-			write "Nuclear installations: " + nb_installations;
+			// write "Nuclear installations: " + nb_installations;
 			return ok;
 		}
 		
@@ -624,7 +624,7 @@ species energy parent:bloc {
 				tick_resources_used["m² land"] <- cumulative_land_occupied;
 				tick_emissions["gCO2e emissions"] <- actual_production * emissions_per_kwh;				
 			}
-			write "Solar park installations: " + nb_installations;
+			// write "Solar park installations: " + nb_installations;
 			return ok;
 		}
 		
@@ -731,7 +731,7 @@ species energy parent:bloc {
 				tick_resources_used["m² land"] <- cumulative_land_occupied;
 				tick_emissions["gCO2e emissions"] <- actual_production * emissions_per_kwh;
 			}
-			write "Wind park: " + nb_installations;
+			// write "Wind park: " + nb_installations;
 			return ok;
 		}
 		
@@ -837,7 +837,7 @@ species energy parent:bloc {
 				tick_resources_used["m² land"] <- cumulative_land_occupied;
 				tick_emissions["gCO2e emissions"] <- actual_production * emissions_per_kwh;
 			}
-			write "Hydro installations: " + nb_installations;
+			// write "Hydro installations: " + nb_installations;
 			return ok;
 		}
 		
