@@ -37,42 +37,48 @@ global{
 			"capacity"::13000, // in kg (on average, not always full)
 			"consumption"::1, // in kWh per km
 			"lifetime"::180, // in months
-			"emissions"::2 // GES per km
+			"emissions"::2, // GES per km
+			"distance_max_per_tick"::5000 // distance max traveled per month
 		],
 		"train"::[
 			"quantity"::5000, // number of vehicles available in france
 			"capacity"::300, // in persons (on average, not always full)
 			"consumption"::15, // in kWh per km
 			"lifetime"::480, // in months
-			"emissions"::10 // GES per km
+			"emissions"::10, // GES per km
+			"distance_max_per_tick"::10000 // distance max traveled per month
 		],
 		"taxi"::[
 			"quantity"::63000, // number of vehicles available in france
 			"capacity"::3, // in persons (on average, not always full, not counting driver if there is one)
 			"consumption"::0.1, // in kWh per km
 			"lifetime"::60, // in months
-			"emissions"::1 // GES per km
+			"emissions"::1, // GES per km
+			"distance_max_per_tick"::2000 // distance max traveled per month
 		],
 		"minibus"::[
 			"quantity"::50000, // number of vehicles available in france
 			"capacity"::10, // in persons (on average, not always full)
 			"consumption"::1, // in kWh per km
 			"lifetime"::120, // in months
-			"emissions"::2 // GES per km
+			"emissions"::2, // GES per km
+			"distance_max_per_tick"::1000 // distance max traveled per month
 		],
 		"bicycle"::[
 			"quantity"::36000000, // number of vehicles available in france
 			"capacity"::1, // in persons (on average, not always full)
 			"consumption"::0.001, // in kWh per km (electric bike 0.01?)
 			"lifetime"::180, // in months
-			"emissions"::0 // GES per km
+			"emissions"::0, // GES per km
+			"distance_max_per_tick"::100 // distance max traveled per month
 		],
 		"walk"::[
 			"quantity"::500000000, // 500M seems like a good ceiling
 			"capacity"::1, // in person ?
 			"consumption"::0, // in kWh per km
-			"lifetime"::1, // in months
-			"emissions"::0 // GES per km
+			"lifetime"::1, // in months // no lifetime
+			"emissions"::0, // GES per km
+			"distance_max_per_tick"::20 // distance max traveled per month
 		]
 	];
 	
@@ -105,6 +111,7 @@ global{
 	map<string, float> tick_emissions_T <- [];
 	map<string, float> tick_vehicle_usage_T <- []; // usage of each vehicle this tick in km/kg or km/pers
 	map<string, int> tick_vehicle_available_T <- [];
+	map<string, float> tick_vehicle_available_left_T <- [];
 
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -136,7 +143,7 @@ species transport parent:bloc{
 	map<string, float> number_of_vehicles_available <- []; // initialized in setup()
 
 	// true for method 1, false for method 2 (cf explanations for lifespan methods)
-	bool vehicle_lifespan_method <- false;
+	bool vehicle_lifespan_method <- true;
 	// method 1 for lifespan
 	// ages (in ticks) for each vehicles
 	map<string, list<int>> vehicles_age <- [];
@@ -167,13 +174,14 @@ species transport parent:bloc{
 				int remainder <- number_of_vehicles[v] mod number_of_ticks;
 				list<int> first_half <- [];
 				list<int> second_half <- [];
-				loop tick from: 0 to: remainder{
+				loop times: remainder{
 					add (number_of_vehicles_per_tick + 1) to: first_half ;
 				}
-				loop tick from: 0 to: number_of_ticks - remainder - 1{
+				loop times: number_of_ticks - remainder{
 					add (number_of_vehicles_per_tick) to: second_half ;
 				}
 				vehicles_age[v] <- first_half + second_half;
+				
 //					if (tick < remainder) {
 //						vehicles_age[v][tick] <- number_of_vehicles_per_tick + 1;
 //					}
@@ -236,6 +244,8 @@ species transport parent:bloc{
 	    	tick_emissions_T <- producer.get_tick_emissions(); // collect emissions
 	    	tick_vehicle_usage_T <- producer.get_tick_vehicle_usage(); // collect vehicle usage
 	    	tick_vehicle_available_T <- number_of_vehicles; // collect total number of vehicles
+	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // collect total number of vehicles left available
+	    	
 	    	
 	    	ask transport_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -247,11 +257,17 @@ species transport parent:bloc{
     	}
 	}
 	
+	// reset the amount of vehicles available for this tick
 	// updates the lifespan of vehicles
 	// 2 structures proposed :
 	// 1) storing for each vehicle a map with the number of vehicles from a given tick up to the lifespan
 	// 2) removing a certain percentage of vehicles each tick
 	action update_vehicle_numbers{
+		// reset the amount of vehicles available for this tick to the total
+		loop v over: vehicles{
+			number_of_vehicles_available[v] <- number_of_vehicles[v];
+		}
+		
 		if vehicle_lifespan_method {
 			// Method 1 :
 			loop v over:vehicles{
@@ -397,6 +413,12 @@ species transport parent:bloc{
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
 						float vehicle_km <- sub_quantity / specs["capacity"];
 						tick_vehicle_usage[vehicle_name] <- tick_vehicle_usage[vehicle_name] + vehicle_km;
+						number_of_vehicles_available[vehicle_name] <- number_of_vehicles_available[vehicle_name] - (vehicle_km / specs["distance_max_per_tick"]);
+						if (number_of_vehicles_available[vehicle_name] < 0) {
+							ask transport{
+								do create_new_vehicles(vehicle_name, int(-number_of_vehicles_available[vehicle_name]) + 1);
+							}
+						}
 						
 						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
 						float emissions <- vehicle_km * specs["emissions"];
@@ -495,6 +517,8 @@ experiment run_transport type: gui {
 			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.75, 0.5} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	data v value: tick_vehicle_available_T[v];
+			    	string new_label <- v + "_left";
+			    	data new_label value: tick_vehicle_available_left_T[v];
 			    }
 			}
 	    }
