@@ -34,51 +34,51 @@ global{
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
 			"quantity"::600000, // number of vehicles available in france
-			"capacity"::13000, // in kg (on average, not always full)
+			"capacity"::13000, // in kg (on average, not always full)             //TODO
 			"consumption"::1, // in kWh per km
-			"lifetime"::180, // in months
-			"emissions"::2, // GES per km
-			"distance_max_per_tick"::5000 // distance max traveled per month
+			"lifetime"::180, // in months                                         //TODO
+			"emissions"::2, // GES per km                                         //TODO
+			"distance_max_per_tick"::5000 // distance max traveled per month      //TODO
 		],
 		"train"::[
-			"quantity"::5000, // number of vehicles available in france
-			"capacity"::300, // in persons (on average, not always full)
-			"consumption"::15, // in kWh per km
-			"lifetime"::480, // in months
-			"emissions"::10, // GES per km
-			"distance_max_per_tick"::10000 // distance max traveled per month
+			"quantity"::5000, // number of vehicles available in france           //TODO
+			"capacity"::258, // in persons (on average, not always full)
+			"consumption"::15, // in kWh per km                                   //TODO
+			"lifetime"::480, // in months                                         //TODO
+			"emissions"::10, // GES per km                                        //TODO
+			"distance_max_per_tick"::10000 // distance max traveled per month     //TODO
 		],
 		"taxi"::[
-			"quantity"::63000, // number of vehicles available in france
-			"capacity"::3, // in persons (on average, not always full, not counting driver if there is one)
+			"quantity"::63000, // number of vehicles available in france          //TODO
+			"capacity"::2, // in persons (on average, not always full, not counting driver if there is one)
 			"consumption"::0.1, // in kWh per km
-			"lifetime"::60, // in months
-			"emissions"::1, // GES per km
-			"distance_max_per_tick"::2000 // distance max traveled per month
+			"lifetime"::60, // in months                                          //TODO
+			"emissions"::0.1, // GES per km
+			"distance_max_per_tick"::2000 // distance max traveled per month      //TODO
 		],
 		"minibus"::[
-			"quantity"::50000, // number of vehicles available in france
-			"capacity"::10, // in persons (on average, not always full)
-			"consumption"::1, // in kWh per km
-			"lifetime"::120, // in months
-			"emissions"::2, // GES per km
-			"distance_max_per_tick"::1000 // distance max traveled per month
+			"quantity"::50000, // number of vehicles available in france          //TODO
+			"capacity"::10, // in persons (on average, not always full)           //TODO
+			"consumption"::0.3, // in kWh per km
+			"lifetime"::120, // in months                                         //TODO
+			"emissions"::2, // GES per km                                         //TODO
+			"distance_max_per_tick"::5000 // distance max traveled per month
 		],
 		"bicycle"::[
-			"quantity"::36000000, // number of vehicles available in france
-			"capacity"::1, // in persons (on average, not always full)
-			"consumption"::0.001, // in kWh per km (electric bike 0.01?)
-			"lifetime"::180, // in months
-			"emissions"::0, // GES per km
-			"distance_max_per_tick"::100 // distance max traveled per month
+			"quantity"::36000000, // number of vehicles available in france       //TODO
+			"capacity"::1, // could be slightly higher but mostly 1
+			"consumption"::0.001, // in kWh per km (electric bike 0.01?)          //TODO
+			"lifetime"::180, // in months                                         //TODO
+			"emissions"::0, // GES per km                                         //TODO
+			"distance_max_per_tick"::100 // distance max traveled per month       //TODO
 		],
 		"walk"::[
-			"quantity"::500000000, // 500M seems like a good ceiling
+			"quantity"::500000000, // 500M seems like a good ceiling              //TODO
 			"capacity"::1, // in person ?
 			"consumption"::0, // in kWh per km
 			"lifetime"::1, // in months // no lifetime
 			"emissions"::0, // GES per km
-			"distance_max_per_tick"::20 // distance max traveled per month
+			"distance_max_per_tick"::20 // distance max traveled per month        //TODO
 		]
 	];
 	
