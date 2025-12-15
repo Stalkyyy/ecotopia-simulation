@@ -7,6 +7,7 @@
 model Agricultural
 
 import "../API/API.gaml"
+import "Ecosystem.gaml"
 
 /**
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
@@ -20,16 +21,23 @@ global{
 	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
+		// pourquoi j'ai besoin de gaz à effets de serre ?
 		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "gCO2e emissions"::27.0, "km/kg_scale_2"::0.0],
 		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "gCO2e emissions"::0.4, "km/kg_scale_2"::0.0],
 		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "gCO2e emissions"::4.7, "km/kg_scale_2"::0.0]
-	]; // Note : this is fake data (not the real amound of resources used and emitted)
+	];
 	map<string, map<string, float>> production_output_emissions_A <- [
 		"kg_meat"::["gCO2e emissions"::27.0],
 		"kg_vegetables"::["gCO2e emissions"::0.4],
 		"kg_cotton"::["gCO2e emissions"::4.7]
-	]; // Note : this is fake data (not the real amound of resources used and emitted)
+	];
 	
+	/* Initialisation des surfaces de production */
+	map<string, float> surface_production_A <- [
+		"kg_meat"::0.0,
+		"kg_vegetables"::0.0,
+		"kg_cotton"::0.0
+	];
 	
 	/* Consumption data */
 	float vegetarian_proportion <- 0.022;
@@ -117,6 +125,9 @@ species agricultural parent:bloc{
 	}
 	
 	action population_activity(list<human> pop) {
+		// on fait évoluer les besoins selon le taux de végétariens
+		indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)];
+		
     	ask pop{ // execute the consumption behavior of the population
     		ask myself.agri_consumer{
     			do consume(myself); // individuals consume agricultural goods
@@ -126,11 +137,14 @@ species agricultural parent:bloc{
     	ask agri_consumer{ // produce the required quantities
     		ask agri_producer{
     			loop c over: myself.consumed.keys{
+    				// write c + " : " + myself.consumed[c];
 		    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
 		    		// note : in this example, we do not take into account the 'ok' signal.
 		    	}
 		    }
     	}
+    	
+    	//write "pop : " + length(pop);
     }
 	
 	
@@ -182,24 +196,55 @@ species agricultural parent:bloc{
 		bool produce(map<string,float> demand){
 			bool ok <- true;
 			loop c over: demand.keys{
-				production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
-				loop u over: production_inputs_A{
-					float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-					tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
-					if(external_producers.keys contains u){ // if there is a known external producer for this product/good
-						bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
-						if not av{
-							ok <- false;
+				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
+					production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
+					
+					loop u over: production_inputs_A{
+						
+						float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
+
+						if(external_producers.keys contains u){ // if there is a known external producer for this product/good
+							
+							// allouer seulement l'espace nécessaire sans l'espace déjà à nous
+							if(u = "m² land"){
+								// dans tous cas on a au minimum la surface déjà allouée
+								tick_resources_used[u] <- tick_resources_used[u] + surface_production_A[c];
+								
+								if(quantity_needed > surface_production_A[c]){
+									quantity_needed <- quantity_needed - surface_production_A[c];
+									
+									// ici on part du principe que la surface est toujours donnée (à voir comment modifier ça plus tard)
+									surface_production_A[c] <- surface_production_A[c] + quantity_needed;
+								} else {
+									continue;
+								}
+							}
+							
+							tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
+							bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
+							if not av{
+								ok <- false;
+							}
 						}
 					}
+	
+					loop e over: production_emissions_A{ // apply emissions
+						float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
+						tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
+					}
+					tick_production[c] <- tick_production[c] + demand[c];
+				
 				}
-
-				loop e over: production_emissions_A{ // apply emissions
-					float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
-					tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
-				}
-				tick_production[c] <- tick_production[c] + demand[c];
 			}
+			
+			write "surface : " + surface_production_A;
+			write "autre : " + tick_resources_used["m² land"];
+			
+			float ges <- tick_emissions["gCO2e emissions"];
+			ask ecosystem {
+				do receive_ges_emissions(ges);
+			}
+			
 			return ok;
 		}
 		
@@ -238,17 +283,16 @@ species agricultural parent:bloc{
 		    }
 		    
 		    // Pour tuer les humains qui n'ont pas mangé
-		    /*
-		    map<string, float> production_totale;
+		    
+		    /*map<string, float> production_totale;
 		    ask agri_producer {
 		    	production_totale <- get_tick_outputs_produced();
 		    }
 		    
 		    if(consumed["kg_meat"] > production_totale["kg_meat"] and consumed["kg_vegetables"] > production_totale["kg_vegetables"]){
 		    	ask h { do die; }
-		    }
-		    
-		    */
+		    }*/
+		   
 		}
 	}
 }
@@ -262,6 +306,9 @@ species agricultural parent:bloc{
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
  */
 experiment run_agricultural type: gui {
+	
+	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
+	
 	output {
 		display Agricultural_information {
 			chart "Population direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
