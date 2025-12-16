@@ -61,7 +61,8 @@ global {
      */
     
     float total_land_france_m2 <- 543940000000.0; 									// 543,940 km² in m²
-    float land_stock <- total_land_france_m2;  										// Initially all available
+    float land_protected <- total_land_france_m2 * 0.28;							// 28% (152 303km²) of the total land in m²
+    float land_stock <- total_land_france_m2 - land_protected - total_forest_area_m2;					// Initially all available
     float land_occupied <- 0.0;  													// Track cumulative occupation
     
     
@@ -244,17 +245,16 @@ species ecosystem parent:bloc {
             // LAND
             if("m² land" in demand.keys){
                 float land_requested <- demand["m² land"];
-                float land_available_now <- total_land_france_m2 - land_occupied;
                 
-                if(land_requested <= land_available_now){
+                if(land_requested <= land_stock){
                     land_occupied <- land_occupied + land_requested;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    land_stock <- land_stock - land_requested;
                     tick_production["m² land"] <- tick_production["m² land"] + land_requested;
                 } else {
                     all_available <- false;
-                    tick_production["m² land"] <- tick_production["m² land"] + land_available_now;
-                    land_occupied <- land_occupied + land_available_now;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    tick_production["m² land"] <- tick_production["m² land"] + land_stock;
+                    land_occupied <- land_occupied + land_stock;
+                    land_stock <- 0.0;
                 }
             }
             
