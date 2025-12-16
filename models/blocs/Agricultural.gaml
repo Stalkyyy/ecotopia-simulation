@@ -7,7 +7,7 @@
 model Agricultural
 
 import "../API/API.gaml"
-import "Ecosystem.gaml"
+//import "Ecosystem.gaml"
 
 /**
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
@@ -37,6 +37,23 @@ global{
 		"kg_meat"::0.0,
 		"kg_vegetables"::0.0,
 		"kg_cotton"::0.0
+	];
+	
+	/* Facteur de surpoduction pour prévoir du stock */
+	float overproduction_factor <- 0.05;
+	
+	/* Initialisation du stock des productions agricoles */
+	map<string, map<string, float>> stock <- [
+		"kg_meat"::["quantity"::0.0, "nb_ticks"::0],
+		"kg_vegetables"::["quantity"::0.0, "nb_ticks"::0],
+		"kg_cotton"::["quantity"::0.0, "nb_ticks"::0]
+	];
+	
+	/* Durée de vie des productions agricoles (en nombre de ticks, données aléatoires pour l'instant) */
+	map<string, int> lifetime_productions <- [
+		"kg_meat"::4,
+		"kg_vegetables"::3,
+		"kg_cotton"::6
 	];
 	
 	/* Consumption data */
@@ -113,6 +130,36 @@ species agricultural parent:bloc{
 	    	tick_resources_used_A <- producer.get_tick_inputs_used(); // collect resources used
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
+	    	
+	    	// calcule du surplus de production à stocker + consommation du stock
+	    	loop p over: production_outputs_A{
+	    		float demand <- tick_pop_consumption_A[p];
+	    		float producted <- tick_production_A[p];
+	    		
+	    		float surplus <- producted - demand;
+	    		if surplus >= 0.0{
+	    			stock[p]["quantity"] <- stock[p]["quantity"] + surplus;
+	    		}
+	    		else{ // si pas assez de productions agricoles, on puise dans le stock
+	    			float quantity_missing <- demand - producted;
+	    			
+	    			float stock_qty_used <- min(quantity_missing, stock[p]["quantity"]);
+	    			stock[p]["quantity"] <- stock[p]["quantity"] - stock_qty_used;
+	    			
+	    			// on met à jour la consommation réelle
+	    			tick_pop_consumption_A[p] <- producted + stock_qty_used; 
+	    			// il se peut qu'il y ait une certaine production, donc à prendre en compte quand même
+	    			
+	    			write "Production insuffisant/impossible, utilisation du stock : " + p + " = " + stock_qty_used + ". Stock restant = " + stock[p]["quantity"];
+	    		}
+	    		
+	    	}
+	    	
+	    	write "STOCK : " + stock;
+	    	write "PRODUCTION : " + tick_production_A;
+	    	write "CONSOMMATION :" + tick_pop_consumption_A;
+	    	
+	    	// penser à viellir le stock à chaque tick
 	    	
 	    	ask agri_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -198,11 +245,19 @@ species agricultural parent:bloc{
 			loop c over: demand.keys{
 				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
 					production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
+					//write "Avant la loop = " + production_output_inputs_A[c]["km/kg_scale_2"];
+					
+					float augmented_demand <- demand[c] * (1 + overproduction_factor);
+					
+					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
 					loop u over: production_inputs_A{
 						
-						float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-
+						//float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
+						
+						float quantity_needed <- production_output_inputs_A[c][u] * augmented_demand;
+						
+						
 						if(external_producers.keys contains u){ // if there is a known external producer for this product/good
 							
 							// allouer seulement l'espace nécessaire sans l'espace déjà à nous
@@ -229,10 +284,12 @@ species agricultural parent:bloc{
 					}
 	
 					loop e over: production_emissions_A{ // apply emissions
-						float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
+						//float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
+						float quantity_emitted <- production_output_emissions_A[c][e] * augmented_demand;
 						tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
 					}
-					tick_production[c] <- tick_production[c] + demand[c];
+					//tick_production[c] <- tick_production[c] + demand[c];
+					tick_production[c] <- tick_production[c] + augmented_demand;
 				
 				}
 			}
@@ -240,10 +297,10 @@ species agricultural parent:bloc{
 			write "surface : " + surface_production_A;
 			write "autre : " + tick_resources_used["m² land"];
 			
-			float ges <- tick_emissions["gCO2e emissions"];
+			/*float ges <- tick_emissions["gCO2e emissions"];
 			ask ecosystem {
 				do receive_ges_emissions(ges);
-			}
+			}*/
 			
 			return ok;
 		}
@@ -281,9 +338,8 @@ species agricultural parent:bloc{
 		    		consumed[c] <- consumed[c]+indivudual_consumption_A[c];
 		    	}
 		    }
-		    
 		    // Pour tuer les humains qui n'ont pas mangé
-		    
+		   	
 		    /*map<string, float> production_totale;
 		    ask agri_producer {
 		    	production_totale <- get_tick_outputs_produced();
@@ -292,7 +348,6 @@ species agricultural parent:bloc{
 		    if(consumed["kg_meat"] > production_totale["kg_meat"] and consumed["kg_vegetables"] > production_totale["kg_vegetables"]){
 		    	ask h { do die; }
 		    }*/
-		   
 		}
 	}
 }
@@ -308,6 +363,7 @@ species agricultural parent:bloc{
 experiment run_agricultural type: gui {
 	
 	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
+	parameter "Taux de surproduction" var:overproduction_factor min:0.0 max:1.0;
 	
 	output {
 		display Agricultural_information {
@@ -329,6 +385,11 @@ experiment run_agricultural type: gui {
 			chart "Production emissions" type: series size: {0.5,0.5} position: {0.5, 0.5} {
 			    loop e over: production_emissions_A{
 			    	data e value: tick_emissions_A[e];
+			    }
+			}
+			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {0.5, 0} {
+			    loop c over: production_outputs_A{
+			    	data c value: stock[c]["quantity"];
 			    }
 			}
 	    }
