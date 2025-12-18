@@ -393,6 +393,7 @@ species energy parent:bloc {
 			}
 			
 			float emissions_g <- actual_alloc_kwh * energy_cfg[source_name]["emissions_per_kwh"];
+			do send_ges_to_ecosystem(emissions_g);
 			
 			result["allocated_kwh"] <- actual_alloc_kwh;
 			result["shortfall_kwh"] <- requested_kwh - actual_alloc_kwh;
