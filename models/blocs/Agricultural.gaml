@@ -22,9 +22,9 @@ global{
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
 		// pourquoi j'ai besoin de gaz à effets de serre ?
-		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "gCO2e emissions"::27.0, "km/kg_scale_2"::0.0],
-		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "gCO2e emissions"::0.4, "km/kg_scale_2"::0.0],
-		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "gCO2e emissions"::4.7, "km/kg_scale_2"::0.0]
+		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "km/kg_scale_2"::0.0],
+		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "km/kg_scale_2"::0.0],
+		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "km/kg_scale_2"::0.0]
 	];
 	map<string, map<string, float>> production_output_emissions_A <- [
 		"kg_meat"::["gCO2e emissions"::27.0],
@@ -66,7 +66,15 @@ global{
 	map<string, float> tick_resources_used_A <- [];
 	map<string, float> tick_emissions_A <- [];
 	
+	// paramètre pour le transport 
 	int distance <- 50;
+	
+	// paramètres pour la chasse (sangliers)
+	int wilds_animals <- 2000000; // près de 2 millions de sangliers en France
+	int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
+    float animals_reproduction <- 0.15; // ~ 1 à 2 portées par an donc 1/6 
+    int nb_per_litters <- 5; // 5 à 6 marcassins par portées
+    float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -84,7 +92,7 @@ global{
  */
 species agricultural parent:bloc{
 	string name <- "agricultural";
-	
+		
 	agri_producer producer <- nil;
 	agri_consumer consumer <- nil;
 	
@@ -155,9 +163,10 @@ species agricultural parent:bloc{
 	    		
 	    	}
 	    	
-	    	write "STOCK : " + stock;
+	    	/*write "STOCK : " + stock;
 	    	write "PRODUCTION : " + tick_production_A;
 	    	write "CONSOMMATION :" + tick_pop_consumption_A;
+	    	*/
 	    	
 	    	// penser à viellir le stock à chaque tick
 	    	
@@ -184,14 +193,11 @@ species agricultural parent:bloc{
     	ask agri_consumer{ // produce the required quantities
     		ask agri_producer{
     			loop c over: myself.consumed.keys{
-    				// write c + " : " + myself.consumed[c];
 		    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
 		    		// note : in this example, we do not take into account the 'ok' signal.
 		    	}
 		    }
     	}
-    	
-    	//write "pop : " + length(pop);
     }
 	
 	
@@ -251,6 +257,12 @@ species agricultural parent:bloc{
 					
 					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
+					if(c = "kg_meat"){ // pas de ressources utilisées dans le cas de la chasse ?
+						do hunting;
+						float kg_hunted_animals <- hunting_proportion * weight_wilds_animals;
+						tick_production[c] <- tick_production[c] + kg_hunted_animals;
+					}
+					
 					loop u over: production_inputs_A{
 						
 						//float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
@@ -294,9 +306,6 @@ species agricultural parent:bloc{
 				}
 			}
 			
-			write "surface : " + surface_production_A;
-			write "autre : " + tick_resources_used["m² land"];
-			
 			/*float ges <- tick_emissions["gCO2e emissions"];
 			ask ecosystem {
 				do receive_ges_emissions(ges);
@@ -305,6 +314,19 @@ species agricultural parent:bloc{
 			return ok;
 		}
 		
+		action hunting{
+			write "avant chasse : " + wilds_animals;
+			// s'il y a assez d'animaux pour la chasse on l'effectue, sinon pas de chasse
+			if(wilds_animals > hunting_proportion){
+				// calcul des animaux sauvages restants
+				wilds_animals <- wilds_animals - hunting_proportion;
+				write "après chasse : " + wilds_animals;
+			}
+			
+			// calcul de la reproduction des animaux sauvages
+			wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
+			write "reproduction chasse : " + wilds_animals;
+		}	
 	}
 	
 	/**
@@ -314,7 +336,7 @@ species agricultural parent:bloc{
 	 */
 	species agri_consumer parent:consumption_agent{
 	
-		map<string,int> consumed <- [];
+		map<string,float> consumed <- [];
 		
 		map<string, float> get_tick_consumption{
 			return copy(consumed);
@@ -338,16 +360,8 @@ species agricultural parent:bloc{
 		    		consumed[c] <- consumed[c]+indivudual_consumption_A[c];
 		    	}
 		    }
-		    // Pour tuer les humains qui n'ont pas mangé
-		   	
-		    /*map<string, float> production_totale;
-		    ask agri_producer {
-		    	production_totale <- get_tick_outputs_produced();
-		    }
-		    
-		    if(consumed["kg_meat"] > production_totale["kg_meat"] and consumed["kg_vegetables"] > production_totale["kg_vegetables"]){
-		    	ask h { do die; }
-		    }*/
+		    h.vegetables <- consumed["kg_vegetables"];
+		    h.meat <- consumed["kg_meat"];
 		}
 	}
 }
@@ -387,9 +401,14 @@ experiment run_agricultural type: gui {
 			    	data e value: tick_emissions_A[e];
 			    }
 			}
-			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {0.5, 0} {
+			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {1, 0} {
 			    loop c over: production_outputs_A{
 			    	data c value: stock[c]["quantity"];
+			    }
+			}
+			chart "Surface production" type: series size: {0.5,0.5} position: {1, 0.5} {
+			    loop s over: production_outputs_A{
+			    	data s value: surface_production_A[s];
 			    }
 			}
 	    }
