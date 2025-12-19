@@ -58,9 +58,9 @@ global{
 	
 	/* Durée de vie des productions agricoles (en nombre de ticks, données aléatoires pour l'instant) */
 	map<string, int> lifetime_productions <- [
-		"kg_meat"::4,
-		"kg_vegetables"::3,
-		"kg_cotton"::6
+		"kg_meat"::6,
+		"kg_vegetables"::8,
+		"kg_cotton"::12
 	];
 	
 	/* Stock total par ressource affiché sur le graphe de l'expérience */
