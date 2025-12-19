@@ -60,7 +60,7 @@ global{
 	];
 	
 	// nb_humains_divises
-	int nb_humans <- 6800;
+	int nb_humans <- 6700;
 	
 	/* Consumption data */
 	float vegetarian_proportion <- 0.022;
@@ -145,17 +145,6 @@ species agricultural parent:bloc{
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
 	    	
-	    	// envoi des quantités de viande et légumes produites à population
-	    	map<string,float> food_production <- [];
-	    	loop fp over: tick_production_A.keys{
-	    		if(fp != "kg_cotton"){
-	    			food_production[fp] <- tick_production_A[fp];
-	    		}
-	    	}
-	    	ask one_of(residents){
-	    		do send_production_agricultural(food_production);
-	    	}
-	    	
 	    	// calcule du surplus de production à stocker + consommation du stock
 	    	loop p over: production_outputs_A{
 	    		float demand <- tick_pop_consumption_A[p];
@@ -186,6 +175,18 @@ species agricultural parent:bloc{
 	    	*/
 	    	
 	    	// penser à viellir le stock à chaque tick
+	    	
+	    	
+	    	// envoi les quantités de viande et légumes produites à population
+	    	map<string,float> food_production <- [];
+	    	loop fp over: tick_pop_consumption_A.keys{
+	    		if(fp != "kg_cotton"){
+	    			food_production[fp] <- tick_pop_consumption_A[fp];
+	    		}
+	    	}
+	    	ask one_of(residents){
+	    		do send_production_agricultural(food_production);
+	    	}	    	
 	    	
 	    	ask agri_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -277,9 +278,6 @@ species agricultural parent:bloc{
 					
 					// on multiplie la demande par 6800 car on est à 10000 personnes sauf pour le coton
 					float augmented_demand <- demand[c] * (1 + overproduction_factor);
-					if(c != "kg_cotton"){
-						augmented_demand <- augmented_demand * nb_humans;
-					}
 					
 					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
@@ -299,9 +297,6 @@ species agricultural parent:bloc{
 							// on envoie spécifiquement JUSTE la demande
 							if(u = "km/kg_scale_2"){
 								quantity_needed <- production_output_inputs_A[c][u] * demand[c];
-								if(c != "kg_cotton"){
-									quantity_needed <- quantity_needed * nb_humans;
-								}
 																
 								tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
 								bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
@@ -396,7 +391,7 @@ species agricultural parent:bloc{
 		action consume(human h){ 
 		    loop c over: indivudual_consumption_A.keys{
 		    	if(c != "kg_cotton"){
-		    		consumed[c] <- consumed[c]+indivudual_consumption_A[c];
+		    		consumed[c] <- consumed[c]+ (indivudual_consumption_A[c] * nb_humans);
 		    	}
 		    }
 		    // comme on ne considère pas la pénurie en macro, on peut mettre ici ce que chaque humain consomme
