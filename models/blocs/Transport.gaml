@@ -466,7 +466,7 @@ species transport parent:bloc{
 		
 		action consume(human h){
 		    loop c over: indivudual_consumption_T.keys{
-		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c];
+		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c] * 6800;
 		    }
 	    }
 	}
