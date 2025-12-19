@@ -7,7 +7,6 @@
 model Agricultural
 
 import "../API/API.gaml"
-//import "Ecosystem.gaml"
 
 /**
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
@@ -72,9 +71,11 @@ global{
 	// paramètres pour la chasse (sangliers)
 	int wilds_animals <- 2000000; // près de 2 millions de sangliers en France
 	int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
-    float animals_reproduction <- 0.15; // ~ 1 à 2 portées par an donc 1/6 
-    int nb_per_litters <- 5; // 5 à 6 marcassins par portées
+    //float animals_reproduction <- 0.15; // ~ 1 à 2 portées par an donc 1/6 
+    //int nb_per_litters <- 5; // 5 à 6 marcassins par portées
     float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
+    
+    float animals_reproduction <- hunting_proportion / wilds_animals;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -193,8 +194,10 @@ species agricultural parent:bloc{
     	ask agri_consumer{ // produce the required quantities
     		ask agri_producer{
     			loop c over: myself.consumed.keys{
-		    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
-		    		// note : in this example, we do not take into account the 'ok' signal.
+    				if(c != "kg_cotton"){
+			    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
+			    		// note : in this example, we do not take into account the 'ok' signal.
+			    	}
 		    	}
 		    }
     	}
@@ -261,6 +264,7 @@ species agricultural parent:bloc{
 						do hunting;
 						float kg_hunted_animals <- hunting_proportion * weight_wilds_animals;
 						tick_production[c] <- tick_production[c] + kg_hunted_animals;
+						augmented_demand <- augmented_demand - kg_hunted_animals;
 					}
 					
 					loop u over: production_inputs_A{
@@ -306,26 +310,21 @@ species agricultural parent:bloc{
 				}
 			}
 			
-			/*float ges <- tick_emissions["gCO2e emissions"];
-			ask ecosystem {
-				do receive_ges_emissions(ges);
-			}*/
+			//do send_ges_to_ecosystem(float ges);
 			
 			return ok;
 		}
 		
 		action hunting{
-			write "avant chasse : " + wilds_animals;
 			// s'il y a assez d'animaux pour la chasse on l'effectue, sinon pas de chasse
 			if(wilds_animals > hunting_proportion){
 				// calcul des animaux sauvages restants
 				wilds_animals <- wilds_animals - hunting_proportion;
-				write "après chasse : " + wilds_animals;
 			}
 			
 			// calcul de la reproduction des animaux sauvages
-			wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
-			write "reproduction chasse : " + wilds_animals;
+			//wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
+			wilds_animals <- int(wilds_animals * (1 + animals_reproduction));
 		}	
 	}
 	
@@ -360,6 +359,8 @@ species agricultural parent:bloc{
 		    		consumed[c] <- consumed[c]+indivudual_consumption_A[c];
 		    	}
 		    }
+		    // comme on ne considère pas la pénurie en macro, on peut mettre ici ce que chaque humain consomme
+		    // en micro, faudra le mettre dans population activity avec la fonction produce qui renverra la vraie quantité
 		    h.vegetables <- consumed["kg_vegetables"];
 		    h.meat <- consumed["kg_meat"];
 		}
@@ -410,6 +411,9 @@ experiment run_agricultural type: gui {
 			    loop s over: production_outputs_A{
 			    	data s value: surface_production_A[s];
 			    }
+			}
+			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1} {
+			    data "wilds_animals" value: wilds_animals;
 			}
 	    }
 	}
