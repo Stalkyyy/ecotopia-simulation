@@ -63,6 +63,9 @@ global{
 		"kg_cotton"::6
 	];
 	
+	/* Stock total par ressource affiché sur le graphe de l'expérience */
+	map<string, float> stock_display <- [];
+	
 	// nb_humains_divises
 	int nb_humans <- 6700;
 	
@@ -194,6 +197,11 @@ species agricultural parent:bloc{
 	    			stock[p] <- stock[p] + [["quantity"::surplus, "nb_ticks"::0]];
 	    		}
 	    	}
+	    	
+	    	// on met à jour le stock affiché
+	    	loop c over: production_outputs_A {
+			    stock_display[c] <- sum(stock[c] collect each["quantity"]);
+			}
 	    	
 	    	// envoi les quantités de viande et légumes produites à population
 	    	map<string,float> food_production <- [];
@@ -491,8 +499,8 @@ species agricultural parent:bloc{
 experiment run_agricultural type: gui {
 	
 	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
-	parameter "Taux de surproduction" var:overproduction_factor min:0.0 max:1.0;
-	parameter "Taux d'utilisation du stock" var:stock_use_rate min:0.0 max:1.0;
+	parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
+	parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
 	
 	output {
 		display Agricultural_information {
@@ -518,8 +526,7 @@ experiment run_agricultural type: gui {
 			}
 			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {1, 0}{
 			    loop c over: production_outputs_A{
-			    	float val <- sum(stock[c] collect each["quantity"]);
-			    	data c value: val;
+			    	data c value: stock_display[c];
 			    }
 			}
 			chart "Surface production" type: series size: {0.5,0.5} position: {1, 0.5} {
