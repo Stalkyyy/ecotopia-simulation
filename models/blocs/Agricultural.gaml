@@ -56,7 +56,7 @@ global{
 		"kg_cotton"::[]
 	];
 	
-	/* Durée de vie des productions agricoles (en nombre de ticks, données aléatoires pour l'instant) */
+	/* Durée de vie des productions agricoles (en nombre de ticks) */
 	map<string, int> lifetime_productions <- [
 		"kg_meat"::6,
 		"kg_vegetables"::8,
@@ -71,7 +71,7 @@ global{
 	
 	/* Consumption data */
 	float vegetarian_proportion <- 0.022;
-	map<string, float> indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)]; // monthly consumption per individual of the population. Note : this is fake data.
+	map<string, float> indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)];
 	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
@@ -154,10 +154,6 @@ species agricultural parent:bloc{
 	    	
 	    	// vieillissement du stock
 	    	loop p over: production_outputs_A{
-	    		/*if p = "kg_meat"{
-	    			write "Stock AVANT VIEILLIR : " + stock[p];
-	    		}*/
-	    		
 	    		if not empty(stock[p]){
 	    			list<map<string, float>> aged_stock <- [];
 	    			loop lot over: stock[p]{
@@ -170,9 +166,6 @@ species agricultural parent:bloc{
 						}
 	    			}
 	    			stock[p] <- aged_stock;
-	    			/*if p = "kg_meat"{
-	    				write "Stock APRES VIEILLIR : " + stock[p];
-	    			}*/
 	    		}
 	    	}
 	    	
@@ -184,14 +177,6 @@ species agricultural parent:bloc{
 	    		float demand_to_produce <- demand - from_stock;
 	    		float produced <- tick_production_A[p];
 	    		float surplus <- produced - demand_to_produce;
-	    		
-	    		/*if p = "kg_meat"{
-	    			write "DEMAND exacte : " + demand;
-	    			write "DEMAND à produire : " + demand_to_produce;
-	    			write "FROM_STOCK : " + from_stock;
-	    			write "PRODUCED : " + produced;
-	    			write "SURPLUS : " + surplus;
-	    		}*/
 	    		
 	    		if surplus > 0.0{
 	    			stock[p] <- stock[p] + [["quantity"::surplus, "nb_ticks"::0]];
@@ -246,6 +231,7 @@ species agricultural parent:bloc{
     	}    	
     }
     
+    
     float get_stock_to_consume(string p, float demand){
 		if empty(stock[p]) or stock_use_rate <= 0.0 or demand <= 0.0{
 			return 0.0;
@@ -257,9 +243,6 @@ species agricultural parent:bloc{
 		// on trie le stock en fonction de l'âge (décroissant) des ressources por consommer les plus vieilles d'abord
 		// fonctionnement FIFO
 		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
-		/*if p = "kg_meat"{
-			write "Stock trié pour " + p + " : " + sorted_stock;
-		}*/
 		
 		loop lot over:sorted_stock{
 			if stock_to_use >= desired_from_stock{
@@ -281,10 +264,6 @@ species agricultural parent:bloc{
 		
 		list<map<string, float>> updated_stock <- [];
 		
-		/*if p = "kg_meat"{
-			write "STOCK avant consommation : " + stock[p];
-		}*/
-		
 		loop lot over:sorted_stock{
 			if stock_to_use > 0.0{
 				float take <- min(lot["quantity"], stock_to_use);
@@ -298,9 +277,6 @@ species agricultural parent:bloc{
 			}
 		}
 		stock[p] <- updated_stock;
-		/*if p = "kg_meat"{
-			write "STOCK après consommation : " + stock[p];
-		}*/
 	}
 	
 	
