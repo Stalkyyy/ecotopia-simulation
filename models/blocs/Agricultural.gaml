@@ -7,6 +7,7 @@
 model Agricultural
 
 import "../API/API.gaml"
+import "../blocs/Demography.gaml"
 
 /**
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
@@ -144,6 +145,17 @@ species agricultural parent:bloc{
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
 	    	
+	    	// envoi des quantités de viande et légumes produites à population
+	    	map<string,float> food_production <- [];
+	    	loop fp over: tick_production_A.keys{
+	    		if(fp != "kg_cotton"){
+	    			food_production[fp] <- tick_production_A[fp];
+	    		}
+	    	}
+	    	ask one_of(residents){
+	    		do send_production_agricultural(food_production);
+	    	}
+	    	
 	    	// calcule du surplus de production à stocker + consommation du stock
 	    	loop p over: production_outputs_A{
 	    		float demand <- tick_pop_consumption_A[p];
@@ -204,7 +216,7 @@ species agricultural parent:bloc{
 			    	}
 		    	}
 		    }
-    	}
+    	}    	
     }
 	
 	
@@ -330,15 +342,13 @@ species agricultural parent:bloc{
 						//float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
 						float quantity_emitted <- production_output_emissions_A[c][e] * augmented_demand;
 						tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
+						do send_ges_to_ecosystem(tick_emissions[e]);
 					}
 					//tick_production[c] <- tick_production[c] + demand[c];
 					tick_production[c] <- tick_production[c] + augmented_demand;
 				
 				}
 			}
-			
-			//do send_ges_to_ecosystem(float ges);
-			
 			return ok;
 		}
 		
@@ -354,6 +364,8 @@ species agricultural parent:bloc{
 			//wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
 			wilds_animals <- int(wilds_animals * (1 + animals_reproduction));
 		}	
+		
+		
 	}
 	
 	/**
@@ -389,8 +401,8 @@ species agricultural parent:bloc{
 		    }
 		    // comme on ne considère pas la pénurie en macro, on peut mettre ici ce que chaque humain consomme
 		    // en micro, faudra le mettre dans population activity avec la fonction produce qui renverra la vraie quantité
-		    h.vegetables <- consumed["kg_vegetables"];
-		    h.meat <- consumed["kg_meat"];
+		    // h.vegetables <- consumed["kg_vegetables"];
+		    // h.meat <- consumed["kg_meat"];
 		}
 	}
 }
