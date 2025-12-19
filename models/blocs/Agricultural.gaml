@@ -263,8 +263,11 @@ species agricultural parent:bloc{
 					//production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
 					//write "Avant la loop = " + production_output_inputs_A[c]["km/kg_scale_2"];
 					
-					// on multiplie la demande par 6800 car on est à 10000 personnes
-					float augmented_demand <- nb_humans * demand[c] * (1 + overproduction_factor);
+					// on multiplie la demande par 6800 car on est à 10000 personnes sauf pour le coton
+					float augmented_demand <- demand[c] * (1 + overproduction_factor);
+					if(c != "kg_cotton"){
+						augmented_demand <- augmented_demand * nb_humans;
+					}
 					
 					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
@@ -283,7 +286,10 @@ species agricultural parent:bloc{
 						
 							// on envoie spécifiquement JUSTE la demande
 							if(u = "km/kg_scale_2"){
-								quantity_needed <- production_output_inputs_A[c][u] * demand[c] * nb_humans;
+								quantity_needed <- production_output_inputs_A[c][u] * demand[c];
+								if(c != "kg_cotton"){
+									quantity_needed <- quantity_needed * nb_humans;
+								}
 																
 								tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
 								bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
