@@ -18,12 +18,15 @@ global{
 	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land", "km/kg_scale_2"];
 	list<string> production_emissions_A <- ["gCO2e emissions"];
 	
+	// paramètre pour le transport 
+	float distance <- 50.0;
+	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
 		// pourquoi j'ai besoin de gaz à effets de serre ?
-		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "km/kg_scale_2"::0.0],
-		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "km/kg_scale_2"::0.0],
-		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "km/kg_scale_2"::0.0]
+		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "km/kg_scale_2"::distance],
+		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "km/kg_scale_2"::distance],
+		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "km/kg_scale_2"::distance]
 	];
 	map<string, map<string, float>> production_output_emissions_A <- [
 		"kg_meat"::["gCO2e emissions"::27.0],
@@ -55,6 +58,9 @@ global{
 		"kg_cotton"::6
 	];
 	
+	// nb_humains_divises
+	int nb_humans <- 6800;
+	
 	/* Consumption data */
 	float vegetarian_proportion <- 0.022;
 	map<string, float> indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)]; // monthly consumption per individual of the population. Note : this is fake data.
@@ -65,9 +71,6 @@ global{
 	map<string, float> tick_resources_used_A <- [];
 	map<string, float> tick_emissions_A <- [];
 	
-	// paramètre pour le transport 
-	int distance <- 50;
-	
 	// paramètres pour la chasse (sangliers)
 	int wilds_animals <- 2000000; // près de 2 millions de sangliers en France
 	int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
@@ -76,6 +79,7 @@ global{
     float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
     
     float animals_reproduction <- hunting_proportion / wilds_animals;
+    int hunted_animals <- 0;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -247,35 +251,52 @@ species agricultural parent:bloc{
 			loop e over: production_emissions_A{
 				tick_emissions[e] <- 0.0;
 			}
+			
+			// reset des animaux chassés
+			hunted_animals <- 0;
 		}
 		
 		bool produce(map<string,float> demand){
 			bool ok <- true;
 			loop c over: demand.keys{
 				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
-					production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
+					//production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
 					//write "Avant la loop = " + production_output_inputs_A[c]["km/kg_scale_2"];
 					
-					float augmented_demand <- demand[c] * (1 + overproduction_factor);
+					// on multiplie la demande par 6800 car on est à 10000 personnes
+					float augmented_demand <- nb_humans * demand[c] * (1 + overproduction_factor);
 					
 					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
 					if(c = "kg_meat"){ // pas de ressources utilisées dans le cas de la chasse ?
 						do hunting;
-						float kg_hunted_animals <- hunting_proportion * weight_wilds_animals;
+						float kg_hunted_animals <- hunted_animals * weight_wilds_animals;
 						tick_production[c] <- tick_production[c] + kg_hunted_animals;
 						augmented_demand <- augmented_demand - kg_hunted_animals;
 					}
 					
 					loop u over: production_inputs_A{
 						
-						//float quantity_needed <- production_output_inputs_A[c][u] * demand[c]; // quantify the resources consumed/emitted by this demand
-						
-						float quantity_needed <- production_output_inputs_A[c][u] * augmented_demand;
-						
+						float quantity_needed; // quantify the resources consumed/emitted by this demand
 						
 						if(external_producers.keys contains u){ // if there is a known external producer for this product/good
+						
+							// on envoie spécifiquement JUSTE la demande
+							if(u = "km/kg_scale_2"){
+								quantity_needed <- production_output_inputs_A[c][u] * demand[c] * nb_humans;
+																
+								tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
+								bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
+								if not av{
+									ok <- false;
+								}
+								
+								continue;
+							}
 							
+							// mais on produit la quantité nécessaire ET supplémentaire
+							quantity_needed <- production_output_inputs_A[c][u] * augmented_demand;
+														
 							// allouer seulement l'espace nécessaire sans l'espace déjà à nous
 							if(u = "m² land"){
 								// dans tous cas on a au minimum la surface déjà allouée
@@ -286,7 +307,7 @@ species agricultural parent:bloc{
 									
 									// ici on part du principe que la surface est toujours donnée (à voir comment modifier ça plus tard)
 									surface_production_A[c] <- surface_production_A[c] + quantity_needed;
-								} else {
+								} else { // sinon on en a assez et on ne fait aucune demande
 									continue;
 								}
 							}
@@ -318,8 +339,9 @@ species agricultural parent:bloc{
 		action hunting{
 			// s'il y a assez d'animaux pour la chasse on l'effectue, sinon pas de chasse
 			if(wilds_animals > hunting_proportion){
-				// calcul des animaux sauvages restants
+				// calcul des animaux sauvages restants et ceux chassés
 				wilds_animals <- wilds_animals - hunting_proportion;
+				hunted_animals <- hunting_proportion;
 			}
 			
 			// calcul de la reproduction des animaux sauvages
