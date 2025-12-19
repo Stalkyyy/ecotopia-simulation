@@ -9,6 +9,7 @@ model Agricultural
 import "../API/API.gaml"
 import "../blocs/Demography.gaml"
 
+
 /**
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
@@ -45,11 +46,14 @@ global{
 	/* Facteur de surpoduction pour prévoir du stock */
 	float overproduction_factor <- 0.05;
 	
+	/* Porcetage d'utilisation du stock */
+	float stock_use_rate <- 1.0;
+	
 	/* Initialisation du stock des productions agricoles */
-	map<string, map<string, float>> stock <- [
-		"kg_meat"::["quantity"::0.0, "nb_ticks"::0],
-		"kg_vegetables"::["quantity"::0.0, "nb_ticks"::0],
-		"kg_cotton"::["quantity"::0.0, "nb_ticks"::0]
+	map<string, list<map<string, float>>> stock <- [
+		"kg_meat"::[],
+		"kg_vegetables"::[],
+		"kg_cotton"::[]
 	];
 	
 	/* Durée de vie des productions agricoles (en nombre de ticks, données aléatoires pour l'instant) */
@@ -145,37 +149,51 @@ species agricultural parent:bloc{
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
 	    	
+	    	// vieillissement du stock
+	    	loop p over: production_outputs_A{
+	    		/*if p = "kg_meat"{
+	    			write "Stock AVANT VIEILLIR : " + stock[p];
+	    		}*/
+	    		
+	    		if not empty(stock[p]){
+	    			list<map<string, float>> aged_stock <- [];
+	    			loop lot over: stock[p]{
+	    				lot["nb_ticks"] <- lot["nb_ticks"] + 1;
+	    				
+	    				if lot["nb_ticks"] <= lifetime_productions[p]{
+							aged_stock << lot;
+						} else {
+							write "Péremption " + p + " : quantité = " + lot["quantity"] + ", âge = " + lot["nb_ticks"];
+						}
+	    			}
+	    			stock[p] <- aged_stock;
+	    			/*if p = "kg_meat"{
+	    				write "Stock APRES VIEILLIR : " + stock[p];
+	    			}*/
+	    		}
+	    	}
+	    	
 	    	// calcule du surplus de production à stocker + consommation du stock
 	    	loop p over: production_outputs_A{
 	    		float demand <- tick_pop_consumption_A[p];
-	    		float producted <- tick_production_A[p];
+	    		float from_stock <- get_stock_to_consume(p, demand);
+	    		do consume_stock(p, from_stock);
+	    		float demand_to_produce <- demand - from_stock;
+	    		float produced <- tick_production_A[p];
+	    		float surplus <- produced - demand_to_produce;
 	    		
-	    		float surplus <- producted - demand;
-	    		if surplus >= 0.0{
-	    			stock[p]["quantity"] <- stock[p]["quantity"] + surplus;
-	    		}
-	    		else{ // si pas assez de productions agricoles, on puise dans le stock
-	    			float quantity_missing <- demand - producted;
-	    			
-	    			float stock_qty_used <- min(quantity_missing, stock[p]["quantity"]);
-	    			stock[p]["quantity"] <- stock[p]["quantity"] - stock_qty_used;
-	    			
-	    			// on met à jour la consommation réelle
-	    			tick_pop_consumption_A[p] <- producted + stock_qty_used; 
-	    			// il se peut qu'il y ait une certaine production, donc à prendre en compte quand même
-	    			
-	    			write "Production insuffisant/impossible, utilisation du stock : " + p + " = " + stock_qty_used + ". Stock restant = " + stock[p]["quantity"];
-	    		}
+	    		/*if p = "kg_meat"{
+	    			write "DEMAND exacte : " + demand;
+	    			write "DEMAND à produire : " + demand_to_produce;
+	    			write "FROM_STOCK : " + from_stock;
+	    			write "PRODUCED : " + produced;
+	    			write "SURPLUS : " + surplus;
+	    		}*/
 	    		
+	    		if surplus > 0.0{
+	    			stock[p] <- stock[p] + [["quantity"::surplus, "nb_ticks"::0]];
+	    		}
 	    	}
-	    	
-	    	/*write "STOCK : " + stock;
-	    	write "PRODUCTION : " + tick_production_A;
-	    	write "CONSOMMATION :" + tick_pop_consumption_A;
-	    	*/
-	    	
-	    	// penser à viellir le stock à chaque tick
-	    	
 	    	
 	    	// envoi les quantités de viande et légumes produites à population
 	    	map<string,float> food_production <- [];
@@ -219,6 +237,63 @@ species agricultural parent:bloc{
 		    }
     	}    	
     }
+    
+    float get_stock_to_consume(string p, float demand){
+		if empty(stock[p]) or stock_use_rate <= 0.0 or demand <= 0.0{
+			return 0.0;
+		}
+		
+		float stock_to_use <- 0.0;
+		float desired_from_stock <- demand * stock_use_rate;
+		
+		// on trie le stock en fonction de l'âge (décroissant) des ressources por consommer les plus vieilles d'abord
+		// fonctionnement FIFO
+		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		/*if p = "kg_meat"{
+			write "Stock trié pour " + p + " : " + sorted_stock;
+		}*/
+		
+		loop lot over:sorted_stock{
+			if stock_to_use >= desired_from_stock{
+				break;
+			}
+			
+			float remaining <- desired_from_stock - stock_to_use;
+			stock_to_use <- stock_to_use + min(lot["quantity"], remaining);
+		}
+		return stock_to_use;
+	}
+	
+	
+	action consume_stock(string p, float demand){
+		float stock_to_use <- demand;
+		
+		// tri du stock en fonction de l'âge (décroissant) des ressources (FIFO)
+		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		
+		list<map<string, float>> updated_stock <- [];
+		
+		/*if p = "kg_meat"{
+			write "STOCK avant consommation : " + stock[p];
+		}*/
+		
+		loop lot over:sorted_stock{
+			if stock_to_use > 0.0{
+				float take <- min(lot["quantity"], stock_to_use);
+				lot["quantity"] <- lot["quantity"] - take;
+				stock_to_use <- stock_to_use - take;
+				continue;
+			}
+			
+			if lot["quantity"] > 0.0{
+				updated_stock << lot;
+			}
+		}
+		stock[p] <- updated_stock;
+		/*if p = "kg_meat"{
+			write "STOCK après consommation : " + stock[p];
+		}*/
+	}
 	
 	
 	/**
@@ -269,17 +344,22 @@ species agricultural parent:bloc{
 			hunted_animals <- 0;
 		}
 		
+		
+		
 		bool produce(map<string,float> demand){
 			bool ok <- true;
 			loop c over: demand.keys{
 				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
 					//production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
-					//write "Avant la loop = " + production_output_inputs_A[c]["km/kg_scale_2"];
 					
 					// on multiplie la demande par 6800 car on est à 10000 personnes sauf pour le coton
-					float augmented_demand <- demand[c] * (1 + overproduction_factor);
+					float from_stock <- 0.0;
+					ask one_of(agricultural){
+						from_stock <- get_stock_to_consume(c, demand[c]);
+					}
+					float to_produce <- demand[c] - from_stock;
+					float augmented_demand <- to_produce * (1 + overproduction_factor);
 					
-					//write "Vraie demande : " + demand[c] + "Demande augmentée :" + augmented_demand;
 					
 					if(c = "kg_meat"){ // pas de ressources utilisées dans le cas de la chasse ?
 						do hunting;
@@ -334,12 +414,10 @@ species agricultural parent:bloc{
 					}
 	
 					loop e over: production_emissions_A{ // apply emissions
-						//float quantity_emitted <- production_output_emissions_A[c][e] * demand[c];
 						float quantity_emitted <- production_output_emissions_A[c][e] * augmented_demand;
 						tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
 						do send_ges_to_ecosystem(tick_emissions[e]);
 					}
-					//tick_production[c] <- tick_production[c] + demand[c];
 					tick_production[c] <- tick_production[c] + augmented_demand;
 				
 				}
@@ -414,6 +492,7 @@ experiment run_agricultural type: gui {
 	
 	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
 	parameter "Taux de surproduction" var:overproduction_factor min:0.0 max:1.0;
+	parameter "Taux d'utilisation du stock" var:stock_use_rate min:0.0 max:1.0;
 	
 	output {
 		display Agricultural_information {
@@ -437,9 +516,10 @@ experiment run_agricultural type: gui {
 			    	data e value: tick_emissions_A[e];
 			    }
 			}
-			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {1, 0} {
+			chart "Stock quantity evolution" type: series  size: {0.5,0.5} position: {1, 0}{
 			    loop c over: production_outputs_A{
-			    	data c value: stock[c]["quantity"];
+			    	float val <- sum(stock[c] collect each["quantity"]);
+			    	data c value: val;
 			    }
 			}
 			chart "Surface production" type: series size: {0.5,0.5} position: {1, 0.5} {
