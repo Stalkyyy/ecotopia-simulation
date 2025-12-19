@@ -35,6 +35,12 @@ global{
 	int nb_inds -> {length(individual)};
 	float births <- 0; // counter, accumulate the total number of births
 	float deaths <- 0; // counter, accumulate the total number of deaths
+
+	/* Input data */
+	float kg_meat <- 0.0;
+	float kg_vegetables <- 0.0;
+
+	float calorie_intake <- 0.0;
 	
 	init{  
 		// a security added to avoid launching an experiment without the other blocs
@@ -131,6 +137,24 @@ species residents parent:bloc{
 		births <- births + new_births;
 	}
 
+	action send_production_agricultural(map<string, float> p){
+		kg_meat <- p["kg_meat"];
+		kg_vegetables <- p["kg_vegetables"];
+	}
+	
+
+	/* get average calorie intake based on kg_meat + kg_vegetables inputs */
+	action get_calorie_intake{
+		int total_pop <- nb_inds;
+		float meat_per_capita <- (kg_meat / total_pop);
+		float veg_per_capita <- (kg_vegetables / total_pop);
+		// 2500 kcal per kg of meat, 
+		// 500 kcal per kg of vegetables
+		float calorie_intake <- (meat_per_capita * 2500) + (veg_per_capita * 500); 
+		return calorie_intake;
+	}
+
+	/* calculate mortality rate by average calorie intake */
 	action mortality_by_calories{
 		a = 0.0007;
 		b = 0.004;
