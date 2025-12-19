@@ -46,12 +46,12 @@ global {
     float total_forest_area_hectares <- 17000000.0;  								// ha
     float total_forest_area_m2 <- total_forest_area_hectares * 10000.0;  			// Convert to m²
     
-    // Wood growth per hectare per month
+    // Wood growth per m^2 per month
     float wood_growth_kg_per_m2_per_year <- 0.5;  									// kg/m²/year
     float wood_growth_kg_per_m2_per_month <- wood_growth_kg_per_m2_per_year / 12.0;
     
     // Initial wood stock
-    float initial_wood_stock <- 50000000000.0;  										// kg (estimated exploitable wood)
+    float initial_wood_stock <- 50000000000.0;  									// kg (estimated exploitable wood)
     float wood_stock <- initial_wood_stock;
     float wood_max_stock <- initial_wood_stock;
     
@@ -60,9 +60,10 @@ global {
      * LAND STOCK
      */
     
-    float total_land_france_m2 <- 543940000000.0; 									// 543,940 km² in m²
-    float land_stock <- total_land_france_m2;  										// Initially all available
-    float land_occupied <- 0.0;  													// Track cumulative occupation
+    float total_land_france_m2 <- 543940000000.0; 										// 543,940 km² in m²
+    float land_protected <- total_land_france_m2 * 0.28;								// 28% (152 303km²) of the total land in m²
+    float land_stock <- total_land_france_m2 - land_protected - total_forest_area_m2;	// Initially all available
+    float land_occupied <- 0.0;  														// Track cumulative occupation
     
     
     /*
@@ -244,17 +245,16 @@ species ecosystem parent:bloc {
             // LAND
             if("m² land" in demand.keys){
                 float land_requested <- demand["m² land"];
-                float land_available_now <- total_land_france_m2 - land_occupied;
                 
-                if(land_requested <= land_available_now){
+                if(land_requested <= land_stock){
                     land_occupied <- land_occupied + land_requested;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    land_stock <- land_stock - land_requested;
                     tick_production["m² land"] <- tick_production["m² land"] + land_requested;
                 } else {
                     all_available <- false;
-                    tick_production["m² land"] <- tick_production["m² land"] + land_available_now;
-                    land_occupied <- land_occupied + land_available_now;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    tick_production["m² land"] <- tick_production["m² land"] + land_stock;
+                    land_occupied <- land_occupied + land_stock;
+                    land_stock <- 0.0;
                 }
             }
             
@@ -269,13 +269,6 @@ species ecosystem parent:bloc {
                     tick_production["kg wood"] <- tick_production["kg wood"] + wood_stock;
                     wood_stock <- 0.0;
                 }
-            }
-            
-            // RECEIVE GES from other blocs
-            if("gCO2e emissions" in demand.keys){
-                float ges_emitted <- demand["gCO2e emissions"];
-                ges_stock <- ges_stock + (ges_emitted / 1000000.0);  // Convert gCO2e to kg
-                tick_ges_received_eco["total"] <- ges_emitted;
             }
             
             return all_available;
