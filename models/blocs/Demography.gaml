@@ -40,7 +40,7 @@ global{
 	float kg_meat <- 0.0;
 	float kg_vegetables <- 0.0;
 	float L_water <- 0.0;
-	float available_housing <- 0.0;
+	int available_housing <- 0;
 
 	/* Variables for mortality by calorie intake */
 	float calorie_intake <- 0.0;
@@ -49,6 +49,11 @@ global{
 	/* Variables for mortality by water intake */
 	float L_water_intake <- 0.0;
 	float p_death_water <- 0.0;
+
+	/* Variables for mortality and natality by available housing */
+	int housing_deficit <- 0;
+	float p_death_housing <- 0.0;
+	float p_birth_housing <- 0.0;
 	
 	init{  
 		// a security added to avoid launching an experiment without the other blocs
@@ -146,12 +151,16 @@ species residents parent:bloc{
 	}
 
 	action send_production_agricultural(map<string, float> p){
-		kg_meat <- p["kg_meat"];
-		kg_vegetables <- p["kg_vegetables"];
+		float kg_meat <- p["kg_meat"];
+		float kg_vegetables <- p["kg_vegetables"];
 	}
 
 	action send_production_water(map<string, float> p){
-		L_water <- p["L_water"];
+		float L_water <- p["L_water"];
+	}
+
+	action send_production_housing(map<string, int> p){
+		int available_housing <- p["available_housing"];
 	}
 	
 
@@ -186,6 +195,27 @@ species residents parent:bloc{
 		float b = 3;
 		float R = 3;
 		float p_death_water <- a * (1 / (1 + exp(b*(L_water_intake-R))));
+	}
+
+	/* calculate housing deficit */
+	action get_housing_deficit{
+		int total_pop <- nb_inds;
+		int housing_deficit <- total_pop - available_housing;
+		if(housing_deficit < 0){
+			int housing_deficit <- 0;
+		}
+	}
+
+	/* calculate mortality rate by housing deficit */
+	action mortality_by_housing{
+		float a = 0.000001;
+		float p_death_housing <- -a * housing_deficit;
+	}
+
+	/* calculate birth rate by housing deficit */
+	action natality_by_housing{
+		float a = 0.00001;
+		float p_birth_housing <- -a * housing_deficit;
 	}
 
 	
@@ -261,6 +291,11 @@ species individual parent:human{
 		do mortality_by_water;
 		float p_death <- p_death + p_death_water;
 
+		// add mortality by housing deficit
+		do get_housing_deficit;
+		do mortality_by_housing;
+		float p_death <- p_death + p_death_housing;
+
 		return  p_death * coeff_death;
 	}
 	
@@ -271,6 +306,11 @@ species individual parent:human{
 		}
 		int age_cat <- get_age_category(birth_proba[gender].keys);
 		float p_birth <-  birth_proba[gender][age_cat];
+
+		// add natality by housing deficit
+		do get_housing_deficit;
+		do natality_by_housing;
+		float p_birth <- p_birth + p_birth_housing;
 
 		return p_birth * coeff_birth;
 	}
