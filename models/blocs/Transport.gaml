@@ -159,9 +159,6 @@ species transport parent:bloc{
 	// number of vehicles created this tick
 	map<string, float> vehicles_created <- []; // initialized in setup()
 
-	// true for method 1, false for method 2 (cf explanations for lifespan methods)
-	bool vehicle_lifespan_method <- true;
-	// method 1 for lifespan
 	// ages (in ticks) for each vehicles
 	map<string, list<int>> vehicles_age <- [];
 
@@ -181,33 +178,23 @@ species transport parent:bloc{
 			number_of_vehicles_available[v] <- vehicle_data[v]["quantity"];
 			vehicles_created[v] <- 0;
 			
-			if vehicle_lifespan_method{
-				// initializing the lifespan of vehicles in method 1 : uniform distribution of age
-				if (v = "walk"){
-					continue;
-				}
-				vehicles_age[v] <- [];
-				int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
-				int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
-				int remainder <- number_of_vehicles[v] mod number_of_ticks;
-				list<int> first_half <- [];
-				list<int> second_half <- [];
-				loop times: remainder{
-					add (number_of_vehicles_per_tick + 1) to: first_half ;
-				}
-				loop times: number_of_ticks - remainder{
-					add (number_of_vehicles_per_tick) to: second_half ;
-				}
-				vehicles_age[v] <- first_half + second_half;
-				
-//					if (tick < remainder) {
-//						vehicles_age[v][tick] <- number_of_vehicles_per_tick + 1;
-//					}
-//					else {
-//						vehicles_age[v][tick] <- number_of_vehicles_per_tick;
-//					}
-				
+			// initializing the lifespan of vehicles in method 1 : uniform distribution of age
+			if (v = "walk"){
+				continue;
 			}
+			vehicles_age[v] <- [];
+			int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
+			int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
+			int remainder <- number_of_vehicles[v] mod number_of_ticks;
+			list<int> first_half <- [];
+			list<int> second_half <- [];
+			loop times: remainder{
+				add (number_of_vehicles_per_tick + 1) to: first_half ;
+			}
+			loop times: number_of_ticks - remainder{
+				add (number_of_vehicles_per_tick) to: second_half ;
+			}
+			vehicles_age[v] <- first_half + second_half;
 		}
 
 		list<transport_producer> producers <- [];
@@ -286,49 +273,57 @@ species transport parent:bloc{
 			number_of_vehicles_available[v] <- number_of_vehicles[v];
 		}
 		
-		if vehicle_lifespan_method {
-			// Method 1 :
-			loop v over:vehicles{
-				if (v = "walk"){
-					continue;
-				}
-				// get the number of vehicles removed this tick
-				int vehicles_removed <- last(vehicles_age[v]);
-				// reduce the total amount of vehicles known
-				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
-				// remove the oldest vehicles from the lifespan list
-				remove from:vehicles_age[v] index:length(vehicles_age[v])-1;
-				// add 0 new vehicles at tick 0 age
-				add item:0 to: vehicles_age[v] at: 0;
+		loop v over:vehicles{
+			if (v = "walk"){
+				continue;
 			}
-		}
-		else {
-			// Method 2 :
-			loop v over:vehicles{
-				if (v = "walk"){
-					continue;
+			list<int> current_ages <- vehicles_age[v];
+			int max_lifespan <- length(current_ages);
+			
+			list<int> next_ages <- []; 
+			loop times: max_lifespan { next_ages <+ 0; }
+			
+			int vehicles_removed_this_tick <- 0;
+			
+			loop i from: 0 to: max_lifespan - 1 {
+				int count <- current_ages[i];
+				if (count > 0) {
+					int n_age0 <- int(count * 0.3);
+					int n_age2 <- int(count * 0.3);
+					int n_age1 <- count - n_age0 - n_age2;
+					
+					next_ages[i] <- next_ages[i] + n_age0; // no age
+					
+					if (i+1 < max_lifespan) { // normal
+						next_ages[i+1] <- next_ages[i+1] + n_age1;
+					} else {
+						vehicles_removed_this_tick <- vehicles_removed_this_tick + n_age1;
+					}
+					
+					if (i+2 < max_lifespan) { // fast age
+						next_ages[i+2] <- next_ages[i+2] + n_age2;
+					} else {
+						vehicles_removed_this_tick <- vehicles_removed_this_tick + n_age2;
+					}
 				}
-				// get the number of vehicles removed this tick
-				int vehicles_removed <- int(number_of_vehicles[v] * (1/vehicle_data[v]["lifetime"]));
-				// reduce the total amount of vehicles known
-				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
 			}
+			loop i from: 0 to: length(vehicles_age[v]) - 1 {
+			    vehicles_age[v][i] <- next_ages[i];
+			}
+			number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed_this_tick;
 		}
 	}
 	
 	// creates new vehicles, for now no ressources used //TODO: in MICRO
 	action create_new_vehicles(string type, int quantity){
-		write("new " + type+" : "+quantity);
+		//write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
 		}
 		number_of_vehicles[type] <- number_of_vehicles[type] + quantity;
 		number_of_vehicles_available[type] <- number_of_vehicles_available[type] + quantity; 
-		// if using method 1 for lifespan, add it to the lifespan list
-		if vehicle_lifespan_method {
-			vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
-		}
+		vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
 		// ask for energy:
 		ask transport_producer{
 			float required_energy <- quantity * vehicle_creation_energy_cost[type];
@@ -531,20 +526,20 @@ experiment run_transport type: gui {
 			    	data c value: tick_production_T[c];
 			    }
 			}
-			chart "Taxis age repartition" type: series size: {0.5, 0.5} position: {0.5, -0.25} {
+			chart "Taxis age remaining" type: series size: {0.5, 0.5} position: {0.5, -0.25} {
 		        transport t_agent <- first(transport);
 		        if (t_agent != nil) {
 		            list<int> distrib <- t_agent.vehicles_age["taxi"];
-		            if (distrib != nil) { data "Taxis" value: distrib style: bar color: #green; }
+		            if (distrib != nil) { data "Taxis" value: reverse(distrib) style: bar color: #green; }
 		        }
 		    }
-		    chart "Minibuses and Trucks age repartition" type: series size: {0.5, 0.5} position: {1, -0.25} {
+		    chart "Minibuses and Trucks age remaining" type: series size: {0.5, 0.5} position: {1, -0.25} {
 		        transport t_agent <- first(transport);
 		        if (t_agent != nil) {
 		        	list<int> m_distrib <- t_agent.vehicles_age["minibus"];
 		            list<int> t_distrib <- t_agent.vehicles_age["truck"];
-		            if (m_distrib != nil) { data "Minibuses" value: m_distrib style: bar color: #yellow; }
-		            if (t_distrib != nil) { data "Trucks" value: t_distrib style: bar color: #red; }
+		            if (m_distrib != nil) { data "Minibuses" value: reverse(m_distrib) style: bar color: #yellow; }
+		            if (t_distrib != nil) { data "Trucks" value: reverse(t_distrib) style: bar color: #red; }
 		        }
 		    }
 			
@@ -561,19 +556,19 @@ experiment run_transport type: gui {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
-			chart "Trains age repartition" type: series size: {0.5, 0.5} position: {0.5, 0.25} {
+			chart "Trains age remaining" type: series size: {0.5, 0.5} position: {0.5, 0.25} {
 		        transport t_agent <- first(transport);
 		        if (t_agent != nil) {
 		            list<int> distrib <- t_agent.vehicles_age["train"];
-		            if (distrib != nil) { data "Trains" value: distrib style: bar color: #blue; }
+		            if (distrib != nil) { data "Trains" value: reverse(distrib) style: bar color: #blue; }
 		        }
 		    }
-		    chart "Bicycles age repartition" type: series size: {0.5, 0.5} position: {1, 0.25} {
+		    chart "Bicycles age remaining" type: series size: {0.5, 0.5} position: {1, 0.25} {
 		        transport t_agent <- first(transport);
 		        if (t_agent != nil) {
 		            
 		            list<int> distrib <- t_agent.vehicles_age["bicycle"];
-		            if (distrib != nil) { data "Bicycles" value: distrib style: bar color: #pink; }
+		            if (distrib != nil) { data "Bicycles" value: reverse(distrib) style: bar color: #pink; }
 		        }
 		    }
 			
