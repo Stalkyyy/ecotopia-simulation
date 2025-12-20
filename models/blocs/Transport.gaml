@@ -40,7 +40,7 @@ global{
 			"distance_max_per_tick"::3508 // distance MAX traveled per month
 		],
 		"train"::[
-			"quantity"::4400, // number of vehicles available in france
+			"quantity"::13000, // number of vehicles available in france
 			"capacity"::258, // in persons (on average, not always full)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0, // in kWh per km
@@ -49,7 +49,7 @@ global{
 			"distance_max_per_tick"::80000 // distance MAX traveled per month
 		],
 		"taxi"::[
-			"quantity"::189000, // number of vehicles available in france
+			"quantity"::250000, // number of vehicles available in france
 			"capacity"::2, // in persons (on average, not always full, not counting driver if there is one)
 			"capacity_std"::0.1, // mostly similar between months, can slightly vary with weather/season
 			"consumption"::0.1, // in kWh per km
@@ -318,7 +318,7 @@ species transport parent:bloc{
 	
 	// creates new vehicles, for now no ressources used //TODO: in MICRO
 	action create_new_vehicles(string type, int quantity){
-		//write("new " + type+" : "+quantity);
+		write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
@@ -399,7 +399,7 @@ species transport parent:bloc{
 		
 		/* Defines an external producer for a resource (Energy Bloc) */
 		action set_supplier(string product, bloc bloc_agent){
-			write name+": external producer "+bloc_agent+" set for "+product;
+			// write name+": external producer "+bloc_agent+" set for "+product;
 			external_producers[product] <- bloc_agent;
 		}
 		
