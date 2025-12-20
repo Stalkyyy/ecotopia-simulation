@@ -447,6 +447,7 @@ species transport parent:bloc{
 						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
 						float emissions <- vehicle_km * specs["emissions"];
 						tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
+						do send_ges_to_ecosystem(emissions);
 					}
 				}
 			}
