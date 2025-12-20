@@ -90,7 +90,7 @@ global{
 		"km/person_scale_1" :: ["train"::1.0],
 		"km/kg_scale_1"     :: ["truck"::1.0],
 		
-		"km/person_scale_2" :: ["train"::0.89, "taxi"::0.10, "walk"::0.01],
+		"km/person_scale_2" :: ["train"::0.95, "taxi"::0.04, "walk"::0.01],
 		"km/kg_scale_2"     :: ["truck"::1.0], 
 		
 		"km/person_scale_3" :: ["walk"::0.20, "taxi"::0.05, "bicycle"::0.40, "minibus"::0.35],
@@ -318,6 +318,7 @@ species transport parent:bloc{
 	
 	// creates new vehicles, for now no ressources used //TODO: in MICRO
 	action create_new_vehicles(string type, int quantity){
+		//write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
