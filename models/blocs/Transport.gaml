@@ -128,6 +128,8 @@ global{
 			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
 		}
 	}
+	
+	float humans_per_agent <- 6700.0;
 }
 
 
@@ -493,7 +495,7 @@ species transport parent:bloc{
 		
 		action consume(human h){
 		    loop c over: indivudual_consumption_T.keys{
-		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c] * 6800;
+		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c] * humans_per_agent;
 		    }
 	    }
 	}
