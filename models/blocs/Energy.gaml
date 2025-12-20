@@ -353,7 +353,7 @@ species energy parent:bloc {
 					if (ok) {
 						nb_installations <- nb_installations + 1;
 						land_occupied_m2 <- land_occupied_m2 + energy_cfg[source_name]["land_per_installation_m2"];
-						 remaining_capacity_kwh_this_tick <- remaining_capacity_kwh_this_tick + energy_cfg[source_name]["capacity_per_installation_m2"];
+						 remaining_capacity_kwh_this_tick <- remaining_capacity_kwh_this_tick + energy_cfg[source_name]["capacity_per_installation_kwh"];
 					} else {
 						break;
 					}
