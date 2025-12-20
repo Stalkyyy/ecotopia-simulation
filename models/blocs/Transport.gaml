@@ -33,50 +33,56 @@ global{
 		"truck"::[
 			"quantity"::625000, // number of vehicles available in france
 			"capacity"::12000, // in kg (on average, not always full)
+			"capacity_std"::500, // varies slightly between months, there can be more trucks on high demand seasons (christmas)
 			"consumption"::1, // in kWh per km
 			"lifetime"::116, // in months, based on average age on french roads
-			"emissions"::1, // GES per km
-			"distance_max_per_tick"::27000 // distance MAX traveled per month
+			"emissions"::1000, // GES g per km
+			"distance_max_per_tick"::3508 // distance MAX traveled per month
 		],
 		"train"::[
 			"quantity"::4400, // number of vehicles available in france
 			"capacity"::258, // in persons (on average, not always full)
+			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0, // in kWh per km
 			"lifetime"::324, // in months, based on average age on french roads
-			"emissions"::7.2, // GES per km
-			"distance_max_per_tick"::178830 // distance MAX traveled per month
+			"emissions"::7200, // GES g per km
+			"distance_max_per_tick"::80000 // distance MAX traveled per month
 		],
 		"taxi"::[
 			"quantity"::189000, // number of vehicles available in france
 			"capacity"::2, // in persons (on average, not always full, not counting driver if there is one)
+			"capacity_std"::0.1, // mostly similar between months, can slightly vary with weather/season
 			"consumption"::0.1, // in kWh per km
 			"lifetime"::138, // in months
-			"emissions"::0.1, // GES per km
-			"distance_max_per_tick"::27000 // distance MAX traveled per month
+			"emissions"::100, // GES g per km
+			"distance_max_per_tick"::8300 // distance MAX traveled per month
 		],
 		"minibus"::[
 			"quantity"::94000, // number of vehicles available in france
 			"capacity"::6, // in persons (on average, not always full)
+			"capacity_std"::1, // varies slightly between months
 			"consumption"::0.33, // in kWh per km
 			"lifetime"::98, // in months, based on average age on french roads
-			"emissions"::0.5, // GES per km
+			"emissions"::500, // GES g per km
 			"distance_max_per_tick"::5000 // distance MAX traveled per month
 		],
 		"bicycle"::[
 			"quantity"::31464000, // number of bycicles in France
 			"capacity"::1, // could be slightly higher but mostly 1
+			"capacity_std"::0.05, // mostly similar between months (there can be multiple people riding)
 			"consumption"::0.001, // in kWh per km
 			"lifetime"::84, // in months
-			"emissions"::0.023, // GES per km
-			"distance_max_per_tick"::6000
+			"emissions"::23, // g GES per km
+			"distance_max_per_tick"::900
 		],
 		"walk"::[
-			"quantity"::500000000, // 500M seems like a good ceiling              //TODO
+			"quantity"::500000000, // 500M seems like a good ceiling
 			"capacity"::1, // in person ?
+			"capacity_std"::0, // no variation between months
 			"consumption"::0, // in kWh per km
 			"lifetime"::1, // in months // no lifetime
 			"emissions"::0, // GES per km
-			"distance_max_per_tick"::450 // distance MAX traveled per month
+			"distance_max_per_tick"::90 // distance MAX traveled per month
 		]
 	];
 	
@@ -92,7 +98,7 @@ global{
 	];
 	
 	/* Consumption data */
-	map<string, float> indivudual_consumption_T <- [
+	map<string, float> individual_consumption_T <- [
 	"km/person_scale_1"::1636.0,
 	"km/person_scale_2"::1520.0,
 	"km/person_scale_3"::47.2,
@@ -111,7 +117,7 @@ global{
 		"train"::375000.0
 	];
 	
-	/* Counters & Stats *///TODO: change to the right metrics
+	/* Counters & Stats */
 	map<string, float> tick_production_T <- [];
 	map<string, float> tick_pop_consumption_T <- [];
 	map<string, float> tick_resources_used_T <- [];
@@ -140,16 +146,14 @@ global{
 species transport parent:bloc{
 	// DATA :
 	
-	// number of vehicules in france (all scales for now?), this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
-	// TODO: also handle the age of the vehicles
+	// number of vehicules in france (all scales for now), this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
 	map<string, int> number_of_vehicles <- []; // initialized in setup()
 
 
 
 	// CODE :
 
-	// number of vehicles in france (all scales for now?) still available for the current tick, this number resets at the start of the tick, if it becomes negative -> new vehicles must be created to answer the demand
-	// TODO: implement all the logic for resetting at each tick, and for creating new vehicles when in the negatives
+	// number of vehicles in france (all scales for now) still available for the current tick, this number resets at the start of the tick, if it becomes negative -> new vehicles must be created to answer the demand
 	map<string, float> number_of_vehicles_available <- []; // initialized in setup()
 	
 	// number of vehicles created this tick
@@ -437,7 +441,8 @@ species transport parent:bloc{
 						map<string, float> specs <- vehicle_data[vehicle_name];
 						
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
-						float vehicle_km <- sub_quantity / specs["capacity"];
+						float capacity <- max(1, gauss(specs["capacity"], specs["capacity_std"])); 
+						float vehicle_km <- sub_quantity / capacity;
 						tick_vehicle_usage[vehicle_name] <- tick_vehicle_usage[vehicle_name] + vehicle_km;
 						number_of_vehicles_available[vehicle_name] <- number_of_vehicles_available[vehicle_name] - (vehicle_km / specs["distance_max_per_tick"]);
 						if (number_of_vehicles_available[vehicle_name] < 0) {
@@ -494,8 +499,8 @@ species transport parent:bloc{
 		}
 		
 		action consume(human h){
-		    loop c over: indivudual_consumption_T.keys{
-		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c] * humans_per_agent;
+		    loop c over: individual_consumption_T.keys{
+		    	consumed[c] <- consumed[c]+individual_consumption_T[c] * humans_per_agent;
 		    }
 	    }
 	}
@@ -507,43 +512,56 @@ species transport parent:bloc{
  * 
  * Note : experiment car inherit another experiment, but we can't combine displays from multiple experiments at the same time. 
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
- * TODO: modify it to display the data we actually want
  */
 experiment run_transport type: gui {
 	int graph_every_X_ticks <- 1;
 	output {
 		display Transport_information refresh:every(graph_every_X_ticks #cycles){
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, 0} y_log_scale:true {
+			
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
 			
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, 0} y_log_scale:true {
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
 			}
 			
-			chart "Resources usage (Energy)" type: series size: {0.5,0.5} position: {-0.25, 0.5} {
-			    loop r over: production_inputs_T {
-			    	// Affiche les kWh consommés
-			    	data r value: tick_resources_used_T[r] color: #red;
-			    }
-			}
-			
-			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.25, 0.5} {
-			    loop e over: production_emissions_T {
-			    	data e value: tick_emissions_T[e] color: #black;
-			    }
-			}
-			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, 0} {
+			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, -0.25} {
 			    loop v over: vehicles {
 			    	data v value: tick_vehicle_usage_T[v];
 			    }
 			}
-			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.25, 1.0} y_log_scale:true {
+			
+			
+			// Should be modified if we ever have more than 1 energy type
+			chart "Energy Used (kWh)" type: series size: {0.5,0.5} position: {-0.25, 0.25} {
+			    loop r over: production_inputs_T {
+			    	data r value: tick_resources_used_T[r] color: #red;
+			    }
+			}
+			
+			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.25, 0.25} {
+			    loop e over: production_emissions_T {
+			    	data e value: tick_emissions_T[e] color: #black;
+			    }
+			}
+			
+			
+			chart "Vehicles Created (this tick)" type: series size: {0.5,0.5} position: {-0.25, 0.75} y_log_scale:true{
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicles_created_T[v];
+			    }
+			}
+			
+			chart "Total Vehicles" type: series size: {0.5,0.5} position: {0.25, 0.75} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	if (v = "walk") {
 			    		continue;
@@ -553,20 +571,12 @@ experiment run_transport type: gui {
 			    	// data new_label value: tick_vehicle_available_left_T[v];
 			    }
 			}
-			chart "Vehicles unused this tick" type: series size: {0.5,0.5} position: {0.75, 1.0} y_log_scale:true {
+			chart "Unused Vehicles (this tick)" type: series size: {0.5,0.5} position: {0.75, 0.75} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	if (v = "walk") {
 			    		continue;
 			    	}
 			    	data v value: tick_vehicle_available_left_T[v];
-			    }
-			}
-			chart "Vehicles created this tick" type: series size: {0.5,0.5} position: {-0.25, 1.0} y_log_scale:true{
-			    loop v over: (vehicles) {
-			    	if (v = "walk") {
-			    		continue;
-			    	}
-			    	data v value: tick_vehicles_created_T[v];
 			    }
 			}
 	    }
