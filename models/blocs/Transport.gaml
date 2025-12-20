@@ -119,6 +119,7 @@ global{
 	map<string, float> tick_vehicle_usage_T <- []; // usage of each vehicle this tick in km/kg or km/pers
 	map<string, int> tick_vehicle_available_T <- [];
 	map<string, float> tick_vehicle_available_left_T <- [];
+	map<string, float> tick_vehicles_created_T <- [];
 
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -148,6 +149,9 @@ species transport parent:bloc{
 	// number of vehicles in france (all scales for now?) still available for the current tick, this number resets at the start of the tick, if it becomes negative -> new vehicles must be created to answer the demand
 	// TODO: implement all the logic for resetting at each tick, and for creating new vehicles when in the negatives
 	map<string, float> number_of_vehicles_available <- []; // initialized in setup()
+	
+	// number of vehicles created this tick
+	map<string, float> vehicles_created <- []; // initialized in setup()
 
 	// true for method 1, false for method 2 (cf explanations for lifespan methods)
 	bool vehicle_lifespan_method <- true;
@@ -169,6 +173,7 @@ species transport parent:bloc{
 		loop v over:vehicles{
 			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
 			number_of_vehicles_available[v] <- vehicle_data[v]["quantity"];
+			vehicles_created[v] <- 0;
 			
 			if vehicle_lifespan_method{
 				// initializing the lifespan of vehicles in method 1 : uniform distribution of age
@@ -252,7 +257,7 @@ species transport parent:bloc{
 	    	tick_vehicle_usage_T <- producer.get_tick_vehicle_usage(); // collect vehicle usage
 	    	tick_vehicle_available_T <- number_of_vehicles; // collect total number of vehicles
 	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // collect total number of vehicles left available
-	    	
+	    	tick_vehicles_created_T <- vehicles_created; // collect the number of vehicles created this tick 
 	    	
 	    	ask transport_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -317,15 +322,17 @@ species transport parent:bloc{
 		if vehicle_lifespan_method {
 			vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
 		}
-		// demande en énergie :
+		// ask for energy:
 		ask transport_producer{
 			float required_energy <- quantity * vehicle_creation_energy_cost[type];
 			bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
 			if (!energy_ok) {
-					write("TRANSPORT : warning, we tried creating " + quantity + " " + type + " vehicles and asked the Energy bloc for " + required_energy + " energy (kWh), but we got a \"False\" return");
+					// write("TRANSPORT : warning, we tried creating " + quantity + " " + type + " vehicles and asked the Energy bloc for " + required_energy + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
-				}
 			}
+		}
+		// tracking vehicles created
+		vehicles_created[type] <- vehicles_created[type] + quantity;
 	}
 	
 	// calculates the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
@@ -378,7 +385,7 @@ species transport parent:bloc{
 			return tick_emissions;
 		}
 		
-		/* Returns the  */
+		/* Returns the usage of vehicles this tick */
 		map<string, float> get_tick_vehicle_usage{
 			return tick_vehicle_usage;
 		}
@@ -402,6 +409,7 @@ species transport parent:bloc{
 			}
 			loop v over: vehicles{
 				tick_vehicle_usage[v] <- 0.0;
+				vehicles_created[v] <- 0.0;
 			}
 		}
 		
@@ -449,7 +457,7 @@ species transport parent:bloc{
 				bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
 				if (!energy_ok) {
 					global_success <- false;
-					write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
+					// write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
 				}
 			}
@@ -499,16 +507,17 @@ species transport parent:bloc{
  * TODO: modify it to display the data we actually want
  */
 experiment run_transport type: gui {
+	int graph_every_X_ticks <- 1;
 	output {
-		display Transport_information {
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, 0} {
+		display Transport_information refresh:every(graph_every_X_ticks #cycles){
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, 0} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
 			
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, 0} {
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, 0} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
@@ -531,11 +540,30 @@ experiment run_transport type: gui {
 			    	data v value: tick_vehicle_usage_T[v];
 			    }
 			}
-			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.75, 0.5} y_log_scale:true {
+			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.25, 1.0} y_log_scale:true {
 			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
 			    	data v value: tick_vehicle_available_T[v];
-			    	string new_label <- v + "_left";
-			    	data new_label value: tick_vehicle_available_left_T[v];
+			    	// string new_label <- v + "_left";
+			    	// data new_label value: tick_vehicle_available_left_T[v];
+			    }
+			}
+			chart "Vehicles unused this tick" type: series size: {0.5,0.5} position: {0.75, 1.0} y_log_scale:true {
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicle_available_left_T[v];
+			    }
+			}
+			chart "Vehicles created this tick" type: series size: {0.5,0.5} position: {-0.25, 1.0} y_log_scale:true{
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicles_created_T[v];
 			    }
 			}
 	    }
