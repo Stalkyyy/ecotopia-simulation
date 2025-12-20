@@ -519,50 +519,67 @@ experiment run_transport type: gui {
 	output {
 		display Transport_information refresh:every(graph_every_X_ticks #cycles){
 			
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, -0.25} y_log_scale:true {
+			// ROW 1
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.5, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
-			
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, -0.25} y_log_scale:true {
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
 			}
+			chart "Taxis age repartition" type: series size: {0.5, 0.5} position: {0.5, -0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            list<int> distrib <- t_agent.vehicles_age["taxi"];
+		            if (distrib != nil) { data "Taxis" value: distrib style: bar color: #green; }
+		        }
+		    }
+		    chart "Minibuses and Trucks age repartition" type: series size: {0.5, 0.5} position: {1, -0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		        	list<int> m_distrib <- t_agent.vehicles_age["minibus"];
+		            list<int> t_distrib <- t_agent.vehicles_age["truck"];
+		            if (m_distrib != nil) { data "Minibuses" value: m_distrib style: bar color: #yellow; }
+		            if (t_distrib != nil) { data "Trucks" value: t_distrib style: bar color: #red; }
+		        }
+		    }
 			
-			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, -0.25} {
-			    loop v over: vehicles {
-			    	data v value: tick_vehicle_usage_T[v];
-			    }
-			}
 			
-			
+			// ROW 2
 			// Should be modified if we ever have more than 1 energy type
-			chart "Energy Used (kWh)" type: series size: {0.5,0.5} position: {-0.25, 0.25} {
+			chart "Energy Used (kWh)" type: series size: {0.5,0.5} position: {-0.5, 0.25} {
 			    loop r over: production_inputs_T {
 			    	data r value: tick_resources_used_T[r] color: #red;
 			    }
 			}
-			
-			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.25, 0.25} {
+			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0, 0.25} {
 			    loop e over: production_emissions_T {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
+			chart "Trains age repartition" type: series size: {0.5, 0.5} position: {0.5, 0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            list<int> distrib <- t_agent.vehicles_age["train"];
+		            if (distrib != nil) { data "Trains" value: distrib style: bar color: #blue; }
+		        }
+		    }
+		    chart "Bicycles age repartition" type: series size: {0.5, 0.5} position: {1, 0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            
+		            list<int> distrib <- t_agent.vehicles_age["bicycle"];
+		            if (distrib != nil) { data "Bicycles" value: distrib style: bar color: #pink; }
+		        }
+		    }
 			
 			
-			chart "Vehicles Created (this tick)" type: series size: {0.5,0.5} position: {-0.25, 0.75} y_log_scale:true{
-			    loop v over: (vehicles) {
-			    	if (v = "walk") {
-			    		continue;
-			    	}
-			    	data v value: tick_vehicles_created_T[v];
-			    }
-			}
-			
-			chart "Total Vehicles" type: series size: {0.5,0.5} position: {0.25, 0.75} y_log_scale:true {
+			// ROW 3
+			chart "Total Vehicles" type: series size: {0.5,0.5} position: {-0.5, 0.75} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	if (v = "walk") {
 			    		continue;
@@ -572,7 +589,20 @@ experiment run_transport type: gui {
 			    	// data new_label value: tick_vehicle_available_left_T[v];
 			    }
 			}
-			chart "Unused Vehicles (this tick)" type: series size: {0.5,0.5} position: {0.75, 0.75} y_log_scale:true {
+			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0, 0.75} {
+			    loop v over: vehicles {
+			    	data v value: tick_vehicle_usage_T[v];
+			    }
+			}
+			chart "Vehicles Created (this tick)" type: series size: {0.5,0.5} position: {0.5, 0.75} y_log_scale:true{
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicles_created_T[v];
+			    }
+			}
+			chart "Unused Vehicles (this tick)" type: series size: {0.5,0.5} position: {1, 0.75} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	if (v = "walk") {
 			    		continue;
