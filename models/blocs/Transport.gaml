@@ -29,26 +29,25 @@ global{
 	/* DATA */
 	list<string> vehicles <- ["truck", "train", "taxi", "minibus", "bicycle", "walk"];
 	
-	// TODO: also maybe read them from a csv or something
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
 			"quantity"::625000, // number of vehicles available in france
 			"capacity"::12000, // in kg (on average, not always full)
 			"consumption"::1, // in kWh per km
 			"lifetime"::116, // in months, based on average age on french roads
-			"emissions"::2, // GES per km
+			"emissions"::1, // GES per km
 			"distance_max_per_tick"::27000 // distance MAX traveled per month
 		],
 		"train"::[
-			"quantity"::4200, // number of vehicles available in france
+			"quantity"::4400, // number of vehicles available in france
 			"capacity"::258, // in persons (on average, not always full)
-			"consumption"::22.8, // in kWh per km
+			"consumption"::15.0, // in kWh per km
 			"lifetime"::324, // in months, based on average age on french roads
-			"emissions"::16.8, // GES per km
+			"emissions"::7.2, // GES per km
 			"distance_max_per_tick"::178830 // distance MAX traveled per month
 		],
 		"taxi"::[
-			"quantity"::119000, // number of vehicles available in france
+			"quantity"::189000, // number of vehicles available in france
 			"capacity"::2, // in persons (on average, not always full, not counting driver if there is one)
 			"consumption"::0.1, // in kWh per km
 			"lifetime"::138, // in months
@@ -58,7 +57,7 @@ global{
 		"minibus"::[
 			"quantity"::94000, // number of vehicles available in france
 			"capacity"::6, // in persons (on average, not always full)
-			"consumption"::0.3, // in kWh per km
+			"consumption"::0.33, // in kWh per km
 			"lifetime"::98, // in months, based on average age on french roads
 			"emissions"::0.5, // GES per km
 			"distance_max_per_tick"::5000 // distance MAX traveled per month
@@ -67,7 +66,7 @@ global{
 			"quantity"::31464000, // number of bycicles in France
 			"capacity"::1, // could be slightly higher but mostly 1
 			"consumption"::0.001, // in kWh per km
-			"lifetime"::72, // in months
+			"lifetime"::84, // in months
 			"emissions"::0.023, // GES per km
 			"distance_max_per_tick"::6000
 		],
@@ -82,26 +81,35 @@ global{
 	];
 	
 	map<string, map<string, float>> modal_split <- [
-		"km/person_scale_1" :: ["train"::0.95, "taxi"::0.05], // no taxi if we follow slides
+		"km/person_scale_1" :: ["train"::1.0],
 		"km/kg_scale_1"     :: ["truck"::1.0],
 		
-		"km/person_scale_2" :: ["train"::0.90, "taxi"::0.10],
+		"km/person_scale_2" :: ["train"::0.89, "taxi"::0.10, "walk"::0.01],
 		"km/kg_scale_2"     :: ["truck"::1.0], 
 		
-		"km/person_scale_3" :: ["walk"::0.50, "taxi"::0.10, "bicycle"::0.30, "minibus"::0.10],
+		"km/person_scale_3" :: ["walk"::0.20, "taxi"::0.05, "bicycle"::0.40, "minibus"::0.35],
 		"km/kg_scale_3"     :: ["truck"::1.0]
-		// TODO values are kinda random, find good parameters, and maybe change by distance too
 	];
 	
-	/* Consumption data *///TODO: remove, although useful for fake simulation without block connections
+	/* Consumption data */
 	map<string, float> indivudual_consumption_T <- [
-	"km/person_scale_1"::500.0,
-	"km/person_scale_2"::100.0,
-	"km/person_scale_3"::20.0,
-	"km/kg_scale_1"::5000.0,
-	"km/kg_scale_2"::5000.0,
-	"km/kg_scale_3"::1000.0
-	]; // monthly consumption per individual of the population. Note : this is fake data.
+	"km/person_scale_1"::1636.0,
+	"km/person_scale_2"::1520.0,
+	"km/person_scale_3"::47.2,
+	"km/kg_scale_1"::0,
+	"km/kg_scale_2"::0,
+	"km/kg_scale_3"::0
+	]; // monthly consumption per individual of the population.
+	
+	/* Energy required for vehicles creation in kWh */
+	map<string, float> vehicle_creation_energy_cost <- [
+		"walk"::0.0,
+		"bicycle"::6.7,
+		"taxi"::1532.0,
+		"minibus"::4596.0,
+		"truck"::4596.0,
+		"train"::375000.0
+	];
 	
 	/* Counters & Stats *///TODO: change to the right metrics
 	map<string, float> tick_production_T <- [];
@@ -309,6 +317,15 @@ species transport parent:bloc{
 		if vehicle_lifespan_method {
 			vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
 		}
+		// demande en énergie :
+		ask transport_producer{
+			float required_energy <- quantity * vehicle_creation_energy_cost[type];
+			bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			if (!energy_ok) {
+					write("TRANSPORT : warning, we tried creating " + quantity + " " + type + " vehicles and asked the Energy bloc for " + required_energy + " energy (kWh), but we got a \"False\" return");
+					// BAD not enough energy !! or smth
+				}
+			}
 	}
 	
 	// calculates the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
@@ -432,6 +449,7 @@ species transport parent:bloc{
 				bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
 				if (!energy_ok) {
 					global_success <- false;
+					write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
 				}
 			}
