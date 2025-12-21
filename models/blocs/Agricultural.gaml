@@ -84,15 +84,9 @@ global{
 	map<string, float> tick_emissions_A <- [];
 	
 	/* Parameters for hunting */
-	float hunting_over_farm <- 0.4; // proportions of meat produced from hunting
-	map<string, map<string, float>> wild_animals <- [
-		"wild_boar"::["quantity"::2000000, "hunting_rate"::0.038, "kg_per_animal"::90.0, "reproduction_rate"::0.079, "mortality_rate"::0.056], // Normally newborns = 250,000 but growth expo
-		"deer"::["quantity"::1500000, "hunting_rate"::0.03, "kg_per_animal"::24.0, "reproduction_rate"::0.02, "mortality_rate"::0.028],
-		"pigeon"::["quantity"::5000000, "hunting_rate"::0.1, "kg_per_animal"::0.5, "reproduction_rate"::0.05, "mortality_rate"::0.066],
-		"rabbit"::["quantity"::3000000, "hunting_rate"::0.04, "kg_per_animal"::0.75, "reproduction_rate"::0.068, "mortality_rate"::0.113],
-		"random_animal"::["quantity"::50000000, "hunting_rate"::0.3, "kg_per_animal"::10.0, "reproduction_rate"::0.060, "mortality_rate"::0.070]
-	];
-    
+	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
+	float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
+	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
     float hunted_animals_kg <- 0.0;
 	
@@ -128,8 +122,6 @@ species agricultural parent:bloc{
 	action tick(list<human> pop) {
 		do collect_last_tick_data();
 		do population_activity(pop);
-		do reproduce_animals;
-		do natural_mortality_animals;
 	}
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -289,24 +281,6 @@ species agricultural parent:bloc{
 		stock[p] <- updated_stock;
 	}
 	
-	action reproduce_animals {
-	    loop a over: wild_animals.keys {
-	        if wild_animals[a]["quantity"] > 0 {
-	            float newborns <- round(wild_animals[a]["quantity"] * wild_animals[a]["reproduction_rate"]);
-	            wild_animals[a]["quantity"] <- wild_animals[a]["quantity"] + newborns;
-	        }
-	    }
-	}
-	
-	action natural_mortality_animals {
-	    loop a over: wild_animals.keys {
-	        if wild_animals[a]["quantity"] > 0 {
-	            float deaths <- round(wild_animals[a]["quantity"] * wild_animals[a]["mortality_rate"]);
-	            wild_animals[a]["quantity"] <- max(0, wild_animals[a]["quantity"] - deaths);
-	        }
-	    }
-	}
-	
 	
 	/**
 	 * We define here the production agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
@@ -376,8 +350,6 @@ species agricultural parent:bloc{
 						do hunting(augmented_demand); 
 						tick_production[c] <- tick_production[c] + hunted_animals_kg;
 						augmented_demand <- augmented_demand - hunted_animals_kg;
-						write "Kg ciande chassée : " + hunted_animals_kg;
-						write "Kg Viande à produire : " + augmented_demand;
 					}
 					
 					loop u over: production_inputs_A{
@@ -435,26 +407,9 @@ species agricultural parent:bloc{
 		
 		action hunting(float demand){
 			float kg_animal_to_hunt <- demand * hunting_over_farm;
-			write "Kg viande À chasser : " + kg_animal_to_hunt;
-			float total_hunted_kg <- 0.0;
-			// if there are enough animals for hunting, it takes place, otherwise, there is no hunt
-			
-			loop a over:wild_animals.keys{
-				if(total_hunted_kg >= kg_animal_to_hunt){
-					break;
-				}
-				
-				map<string, float> data <- wild_animals[a];
-				float max_huntable_kg <- data["quantity"] * data["kg_per_animal"] * data["hunting_rate"];
-				float to_hunt_kg <- min(kg_animal_to_hunt - total_hunted_kg, max_huntable_kg);
-				
-				if to_hunt_kg > 0{
-					data["quantity"] <- max(0, data["quantity"] - round(to_hunt_kg / data["kg_per_animal"]));
-					total_hunted_kg <- total_hunted_kg + to_hunt_kg;
-					hunted_animals <- hunted_animals + round(to_hunt_kg / data["kg_per_animal"]);
-				}
-			}
-			hunted_animals_kg <- total_hunted_kg;
+			float max_kg_hunted <- hunted_per_month * kg_per_animal;
+			float hunted_kg <- min(kg_animal_to_hunt, max_kg_hunted);
+			hunted_animals_kg <- hunted_kg;
 		}		
 	}
 	
@@ -540,10 +495,8 @@ experiment run_agricultural type: gui {
 			    	data s value: surface_production_A[s];
 			    }
 			}
-			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1}  y_log_scale:true{
-				loop a over:wild_animals.keys{
-					data a value: wild_animals[a]["quantity"];
-			    }
+			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1}{
+				data "hunted_kg" value:hunted_animals_kg;
 			}
 	    }
 	}
