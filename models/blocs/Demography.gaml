@@ -167,7 +167,7 @@ species residents parent:bloc{
 	}
 
 	action send_production_housing(map<string, float> p){
-		total_housing_capacity <- p["total_capacity"];
+		total_housing_capacity <- p["total_housing_capacity"];
 	}
 	
 
@@ -211,7 +211,7 @@ species residents parent:bloc{
 
 	/* calculate housing deficit */
 	action get_housing_deficit{
-		housing_deficit <- total_pop - total_housing_capacity;
+		housing_deficit <- nb_inds - total_housing_capacity;
 	}
 
 	/* calculate mortality rate by housing deficit */
@@ -410,7 +410,6 @@ experiment run_demography type: gui {
 		}
 	}
 }
-
 
 
 

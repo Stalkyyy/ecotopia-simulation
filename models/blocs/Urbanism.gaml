@@ -15,7 +15,7 @@ import "../API/API.gaml"
 global{
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
-	map<string, int> init_units <- ["wood"::200, "modular"::100];
+	map<string, int> init_units <- ["wood"::2000, "modular"::1200];
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
 	map<string, float> surface_per_unit <- ["wood"::80.0, "modular"::60.0]; // m2 per unit
 	
@@ -62,8 +62,8 @@ species urbanism parent: bloc{
 	}
 	
 	list<string> get_output_resources_labels{
-		// no direct outputs yet (capacity is internal state)
-		return [];
+		// expose aggregate housing capacity
+		return ["total_housing_capacity"];
 	}
 	
 	action tick(list<human> pop){
@@ -91,6 +91,11 @@ species urbanism parent: bloc{
 				tick_constructions["wood"] <- wood_plan;
 				tick_constructions["modular"] <- modular_plan;
 			}
+		}
+		
+		// publish current capacity for other blocs
+		ask producer {
+			tick_outputs["total_housing_capacity"] <- total_capacity;
 		}
 		
 		tick_resources_used <- producer.get_tick_inputs_used(); // collect for charts/logs
@@ -162,6 +167,7 @@ species urban_producer parent: production_agent{
 		loop r over: tick_resources_used.keys{
 			tick_resources_used[r] <- 0.0;
 		}
+		tick_outputs["total_housing_capacity"] <- 0.0;
 	}
 	
 	map<string, float> get_tick_inputs_used{
