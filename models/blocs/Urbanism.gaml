@@ -15,7 +15,7 @@ import "../API/API.gaml"
 global{
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
-	map<string, int> init_units <- ["wood"::500, "modular"::300];
+	map<string, int> init_units <- ["wood"::200, "modular"::100];
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
 	map<string, float> surface_per_unit <- ["wood"::80.0, "modular"::60.0]; // m2 per unit
 	
