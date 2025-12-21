@@ -361,7 +361,7 @@ species residents parent:bloc{
 	species residents_consumer parent:consumption_agent{
     
         map<string, float> consumed <- [];
-		map<string, float> resources_to_consume <- ["kg_meat"::3.0, "kg_vegetables"::20.0, "L water"::50.0, "total_housing_capacity"::1.0];
+		map<string, float> resources_to_consume <- ["kg_meat"::7.0, "kg_vegetables"::10.0, "L water"::50.0, "total_housing_capacity"::1.0];
         
         map<string, float> get_tick_consumption{
             return copy(consumed);
