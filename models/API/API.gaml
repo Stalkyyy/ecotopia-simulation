@@ -6,6 +6,7 @@
 
 
 model API
+import "../blocs/Ecosystem.gaml"
 
 /*
  * Species used to represent a bloc.
@@ -53,6 +54,13 @@ species production_agent{
 	
 	/* Defines an external producer for a resource */
 	action set_supplier(string product, bloc bloc_agent) virtual:true; 
+	
+	/* Send the ges emissions from producer to the ecosystem Bloc */
+	action send_ges_to_ecosystem(float ges) {
+		ask ecosystem {
+			do receive_ges_emissions(ges);
+		}
+	}
 }
 
 /* 
@@ -68,6 +76,13 @@ species consumption_agent{
 	
 	/* Returns the amount of resources consumed by the population this tick */
 	action get_tick_consumption virtual:true type: map<string, float>;
+	
+	/* Send the ges emissions from producer to the ecosystem Bloc */
+	action send_ges_to_ecosystem(float ges) {
+		ask ecosystem {
+			do receive_ges_emissions(ges);
+		}
+	}
 }
 	
 species human{

@@ -19,9 +19,9 @@ global {
     /*
      * Setup
      */
-    list<string> production_inputs_E_eco <- [];  									// Ecosystem doesn't consume to produce
+    list<string> production_inputs_E_eco <- [];  								
     list<string> production_outputs_E_eco <- ["L water", "m² land", "kg wood"];
-	list<string> production_emissions_E_eco <- [];  								// Ecosystem doesn't emit directly
+	list<string> production_emissions_E_eco <- [];  								
     
     
     /*
@@ -29,13 +29,12 @@ global {
      */    
      
     // Water stock
-    float initial_water_stock <- 1000000000000.0;  									// L -> 1 trillion liters (France's total water resources)
-    float water_stock <- initial_water_stock;
-    float water_max_stock <- initial_water_stock; 									// Can't exceed total available
+    float initial_water_stock_l <- 2.10e14;  									
+    float water_stock_l <- initial_water_stock_l;
+    float water_max_stock_l <- initial_water_stock_l; 								
     
     // Monthly production
-    float monthly_rainfall <- 50000000000.0;  										// L/month (constant)
-    float water_regeneration_rate <- 0.05;    										// 5% of INITIAL stock per month (NOT compound!)
+    float monthly_water_regeneration <- 1.75e13;
     
     
     /*
@@ -43,26 +42,25 @@ global {
      */
     
     // Forest area
-    float total_forest_area_hectares <- 17000000.0;  								// ha
-    float total_forest_area_m2 <- total_forest_area_hectares * 10000.0;  			// Convert to m²
+    float total_forest_area_m2 <- 1.77e11;  			
     
-    // Wood growth per hectare per month
-    float wood_growth_kg_per_m2_per_year <- 0.5;  									// kg/m²/year
-    float wood_growth_kg_per_m2_per_month <- wood_growth_kg_per_m2_per_year / 12.0;
+    // Monthly wood growth in kg
+    float monthly_wood_growth_kg <- 3.66e9;										
     
-    // Initial wood stock
-    float initial_wood_stock <- 50000000000.0;  										// kg (estimated exploitable wood)
-    float wood_stock <- initial_wood_stock;
-    float wood_max_stock <- initial_wood_stock;
+    // Initial wood stock in kg
+    float initial_wood_stock <- 1.55e12;  							
+    float wood_stock_kg <- initial_wood_stock;
+    float wood_max_stock_kg <- initial_wood_stock;
     
     
     /*
      * LAND STOCK
      */
     
-    float total_land_france_m2 <- 543940000000.0; 									// 543,940 km² in m²
-    float land_stock <- total_land_france_m2;  										// Initially all available
-    float land_occupied <- 0.0;  													// Track cumulative occupation
+    float total_land_france_m2 <- 5.4394e11; 										
+    float land_protected <- total_land_france_m2 * 0.28;	// 28% of the total land in m²
+    float land_stock <- total_land_france_m2 - land_protected - total_forest_area_m2;	
+    float land_occupied <- 0.0;  														
     
     
     /*
@@ -70,15 +68,15 @@ global {
      */
     
     // GES stock (accumulates in atmosphere)
-    float ges_stock <- 0.0;  														// Starts at 0 (no historical emissions)
+    float ges_stock <- 0.0;  									// Starts at 0 (no historical emissions)
     
     // Absorption coefficients (per month)
-    float ges_absorption_per_m2_forest_per_month <- 0.0001;  						// kg CO2e/m²/month
-    float ges_absorption_per_m2_water_per_month <- 0.00005;  						// kg CO2e/m²/month
+    float ges_absorption_per_m2_forest_per_month <- 0.0174; 	// kg CO2e/m²/month
+    float ges_absorption_per_m2_water_per_month <- 0.002; 		// kg CO2e/m²/month
     
     // Estimate water bodies area in France (~5% of land)
-    float water_bodies_area_m2 <- total_land_france_m2 * 0.05;						// m²
-    float forest_area_managed_m2 <- total_forest_area_m2;  							// 17M ha
+    float water_bodies_area_m2 <- total_land_france_m2 * 0.05;						
+    float forest_area_managed_m2 <- total_forest_area_m2;  							
     
     
     /*
@@ -153,12 +151,10 @@ species ecosystem parent:bloc {
     action regenerate_resources {
     	
         // Water regeneration : constant amount per month
-        float monthly_water_production <- monthly_rainfall + (initial_water_stock * water_regeneration_rate);
-        water_stock <- min(water_stock + monthly_water_production, water_max_stock);
+        water_stock_l <- min(water_stock_l + monthly_water_regeneration, water_max_stock_l);        
         
-        // Wood regeneration : forest_area * growth_per_m2_per_month
-        float monthly_wood_growth <- total_forest_area_m2 * wood_growth_kg_per_m2_per_month;
-        wood_stock <- min(wood_stock + monthly_wood_growth, wood_max_stock);
+        // Wood regeneration : constant amount per month 
+        wood_stock_kg <- min(wood_stock_kg + monthly_wood_growth_kg, wood_max_stock_kg);
         
         // Land: no regeneration (only tracking what's occupied)
         // land_stock decreases as land_occupied increases
@@ -230,52 +226,44 @@ species ecosystem parent:bloc {
             
             // WATER
             if("L water" in demand.keys){
-                float water_requested <- demand["L water"];
-                if(water_requested <= water_stock){
-                    water_stock <- water_stock - water_requested;
-                    tick_production["L water"] <- tick_production["L water"] + water_requested;
+                float water_requested_l <- demand["L water"];
+                if(water_requested_l <= water_stock_l){
+                    water_stock_l <- water_stock_l - water_requested_l;
+                    tick_production["L water"] <- tick_production["L water"] + water_requested_l;
                 } else {
                     all_available <- false;
-                    tick_production["L water"] <- tick_production["L water"] + water_stock;
-                    water_stock <- 0.0;
+                    // tick_production["L water"] <- tick_production["L water"] + water_stock;
+                    // water_stock <- 0.0;
                 }
             }
             
             // LAND
             if("m² land" in demand.keys){
                 float land_requested <- demand["m² land"];
-                float land_available_now <- total_land_france_m2 - land_occupied;
                 
-                if(land_requested <= land_available_now){
+                if(land_requested <= land_stock){
                     land_occupied <- land_occupied + land_requested;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    land_stock <- land_stock - land_requested;
                     tick_production["m² land"] <- tick_production["m² land"] + land_requested;
                 } else {
                     all_available <- false;
-                    tick_production["m² land"] <- tick_production["m² land"] + land_available_now;
-                    land_occupied <- land_occupied + land_available_now;
-                    land_stock <- total_land_france_m2 - land_occupied;
+                    // tick_production["m² land"] <- tick_production["m² land"] + land_stock;
+                    // land_occupied <- land_occupied + land_stock;
+                    // land_stock <- 0.0;
                 }
             }
             
             // WOOD
             if("kg wood" in demand.keys){
                 float wood_requested <- demand["kg wood"];
-                if(wood_requested <= wood_stock){
-                    wood_stock <- wood_stock - wood_requested;
+                if(wood_requested <= wood_stock_kg){
+                    wood_stock_kg <- wood_stock_kg - wood_requested;
                     tick_production["kg wood"] <- tick_production["kg wood"] + wood_requested;
                 } else {
                     all_available <- false;
-                    tick_production["kg wood"] <- tick_production["kg wood"] + wood_stock;
-                    wood_stock <- 0.0;
+                    // tick_production["kg wood"] <- tick_production["kg wood"] + wood_stock;
+                    // wood_stock <- 0.0;
                 }
-            }
-            
-            // RECEIVE GES from other blocs
-            if("gCO2e emissions" in demand.keys){
-                float ges_emitted <- demand["gCO2e emissions"];
-                ges_stock <- ges_stock + (ges_emitted / 1000000.0);  // Convert gCO2e to kg
-                tick_ges_received_eco["total"] <- ges_emitted;
             }
             
             return all_available;
@@ -332,14 +320,14 @@ experiment run_ecosystem type: gui {
             
             // Water stock evolution
             chart "Water stock (Liters)" type: series size: {0.5,0.5} position: {0, 0} {
-                data "Stock" value: water_stock;
-                data "Max available" value: water_max_stock;
+                data "Stock" value: water_stock_l;
+                data "Max available" value: water_max_stock_l;
             }
             
             // Wood stock evolution
             chart "Wood stock (kg)" type: series size: {0.5,0.5} position: {0.5, 0} {
-                data "Stock" value: wood_stock;
-                data "Max" value: wood_max_stock;
+                data "Stock" value: wood_stock_kg;
+                data "Max" value: wood_max_stock_kg;
             }
             
             // Land usage
@@ -348,7 +336,7 @@ experiment run_ecosystem type: gui {
                 data "Available" value: land_stock;
             }
             
-            // GES stock and absorption
+            // GES stock and absorption : bugged kinda, not every execution show the correct thing
             chart "GES balance (kg CO2e)" type: series size: {0.5,0.5} position: {0.5, 0.5} {
                 data "GES in atmosphere" value: ges_stock;
             }

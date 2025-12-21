@@ -29,82 +29,95 @@ global{
 	/* DATA */
 	list<string> vehicles <- ["truck", "train", "taxi", "minibus", "bicycle", "walk"];
 	
-	// TODO: not real values -> change to the real values
-	// TODO: also maybe read them from a csv or something
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
-			"quantity"::600000, // number of vehicles available in france
-			"capacity"::13000, // in kg (on average, not always full)
+			"quantity"::625000, // number of vehicles available in france
+			"capacity"::12000, // in kg (on average, not always full)
+			"capacity_std"::500, // varies slightly between months, there can be more trucks on high demand seasons (christmas)
 			"consumption"::1, // in kWh per km
-			"lifetime"::180, // in months
-			"emissions"::2, // GES per km
-			"distance_max_per_tick"::5000 // distance max traveled per month
+			"lifetime"::116, // in months, based on average age on french roads
+			"emissions"::1000, // GES g per km
+			"distance_max_per_tick"::3508 // distance MAX traveled per month
 		],
 		"train"::[
-			"quantity"::5000, // number of vehicles available in france
-			"capacity"::300, // in persons (on average, not always full)
-			"consumption"::15, // in kWh per km
-			"lifetime"::480, // in months
-			"emissions"::10, // GES per km
-			"distance_max_per_tick"::10000 // distance max traveled per month
+			"quantity"::13000, // number of vehicles available in france
+			"capacity"::258, // in persons (on average, not always full)
+			"capacity_std"::30, // varies between months (vacations, ...)
+			"consumption"::15.0, // in kWh per km
+			"lifetime"::324, // in months, based on average age on french roads
+			"emissions"::7200, // GES g per km
+			"distance_max_per_tick"::80000 // distance MAX traveled per month
 		],
 		"taxi"::[
-			"quantity"::63000, // number of vehicles available in france
-			"capacity"::3, // in persons (on average, not always full, not counting driver if there is one)
+			"quantity"::250000, // number of vehicles available in france
+			"capacity"::2, // in persons (on average, not always full, not counting driver if there is one)
+			"capacity_std"::0.1, // mostly similar between months, can slightly vary with weather/season
 			"consumption"::0.1, // in kWh per km
-			"lifetime"::60, // in months
-			"emissions"::1, // GES per km
-			"distance_max_per_tick"::2000 // distance max traveled per month
+			"lifetime"::138, // in months
+			"emissions"::100, // GES g per km
+			"distance_max_per_tick"::8300 // distance MAX traveled per month
 		],
 		"minibus"::[
-			"quantity"::50000, // number of vehicles available in france
-			"capacity"::10, // in persons (on average, not always full)
-			"consumption"::1, // in kWh per km
-			"lifetime"::120, // in months
-			"emissions"::2, // GES per km
-			"distance_max_per_tick"::1000 // distance max traveled per month
+			"quantity"::94000, // number of vehicles available in france
+			"capacity"::6, // in persons (on average, not always full)
+			"capacity_std"::1, // varies slightly between months
+			"consumption"::0.33, // in kWh per km
+			"lifetime"::98, // in months, based on average age on french roads
+			"emissions"::500, // GES g per km
+			"distance_max_per_tick"::5000 // distance MAX traveled per month
 		],
 		"bicycle"::[
-			"quantity"::36000000, // number of vehicles available in france
-			"capacity"::1, // in persons (on average, not always full)
-			"consumption"::0.001, // in kWh per km (electric bike 0.01?)
-			"lifetime"::180, // in months
-			"emissions"::0, // GES per km
-			"distance_max_per_tick"::100 // distance max traveled per month
+			"quantity"::31464000, // number of bycicles in France
+			"capacity"::1, // could be slightly higher but mostly 1
+			"capacity_std"::0.05, // mostly similar between months (there can be multiple people riding)
+			"consumption"::0.001, // in kWh per km
+			"lifetime"::84, // in months
+			"emissions"::23, // g GES per km
+			"distance_max_per_tick"::900
 		],
 		"walk"::[
 			"quantity"::500000000, // 500M seems like a good ceiling
 			"capacity"::1, // in person ?
+			"capacity_std"::0, // no variation between months
 			"consumption"::0, // in kWh per km
 			"lifetime"::1, // in months // no lifetime
 			"emissions"::0, // GES per km
-			"distance_max_per_tick"::20 // distance max traveled per month
+			"distance_max_per_tick"::90 // distance MAX traveled per month
 		]
 	];
 	
 	map<string, map<string, float>> modal_split <- [
-		"km/person_scale_1" :: ["train"::0.95, "taxi"::0.05], // no taxi if we follow slides
+		"km/person_scale_1" :: ["train"::1.0],
 		"km/kg_scale_1"     :: ["truck"::1.0],
 		
-		"km/person_scale_2" :: ["train"::0.90, "taxi"::0.10],
+		"km/person_scale_2" :: ["train"::0.95, "taxi"::0.04, "walk"::0.01],
 		"km/kg_scale_2"     :: ["truck"::1.0], 
 		
-		"km/person_scale_3" :: ["walk"::0.50, "taxi"::0.10, "bicycle"::0.30, "minibus"::0.10],
+		"km/person_scale_3" :: ["walk"::0.20, "taxi"::0.05, "bicycle"::0.40, "minibus"::0.35],
 		"km/kg_scale_3"     :: ["truck"::1.0]
-		// TODO values are kinda random, find good parameters, and maybe change by distance too
 	];
 	
-	/* Consumption data *///TODO: remove, although useful for fake simulation without block connections
-	map<string, float> indivudual_consumption_T <- [
-	"km/person_scale_1"::500.0,
-	"km/person_scale_2"::100.0,
-	"km/person_scale_3"::20.0,
-	"km/kg_scale_1"::5000.0,
-	"km/kg_scale_2"::5000.0,
-	"km/kg_scale_3"::1000.0
-	]; // monthly consumption per individual of the population. Note : this is fake data.
+	/* Consumption data */
+	map<string, float> individual_consumption_T <- [
+	"km/person_scale_1"::1636.0,
+	"km/person_scale_2"::1520.0,
+	"km/person_scale_3"::47.2,
+	"km/kg_scale_1"::0,
+	"km/kg_scale_2"::0,
+	"km/kg_scale_3"::0
+	]; // monthly consumption per individual of the population.
 	
-	/* Counters & Stats *///TODO: change to the right metrics
+	/* Energy required for vehicles creation in kWh */
+	map<string, float> vehicle_creation_energy_cost <- [
+		"walk"::0.0,
+		"bicycle"::6.7,
+		"taxi"::1532.0,
+		"minibus"::4596.0,
+		"truck"::4596.0,
+		"train"::375000.0
+	];
+	
+	/* Counters & Stats */
 	map<string, float> tick_production_T <- [];
 	map<string, float> tick_pop_consumption_T <- [];
 	map<string, float> tick_resources_used_T <- [];
@@ -112,6 +125,7 @@ global{
 	map<string, float> tick_vehicle_usage_T <- []; // usage of each vehicle this tick in km/kg or km/pers
 	map<string, int> tick_vehicle_available_T <- [];
 	map<string, float> tick_vehicle_available_left_T <- [];
+	map<string, float> tick_vehicles_created_T <- [];
 
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -120,6 +134,8 @@ global{
 			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
 		}
 	}
+	
+	float humans_per_agent <- 6700.0;
 }
 
 
@@ -130,21 +146,19 @@ global{
 species transport parent:bloc{
 	// DATA :
 	
-	// number of vehicules in france (all scales for now?), this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
-	// TODO: also handle the age of the vehicles
+	// number of vehicules in france (all scales for now), this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
 	map<string, int> number_of_vehicles <- []; // initialized in setup()
 
 
 
 	// CODE :
 
-	// number of vehicles in france (all scales for now?) still available for the current tick, this number resets at the start of the tick, if it becomes negative -> new vehicles must be created to answer the demand
-	// TODO: implement all the logic for resetting at each tick, and for creating new vehicles when in the negatives
+	// number of vehicles in france (all scales for now) still available for the current tick, this number resets at the start of the tick, if it becomes negative -> new vehicles must be created to answer the demand
 	map<string, float> number_of_vehicles_available <- []; // initialized in setup()
+	
+	// number of vehicles created this tick
+	map<string, float> vehicles_created <- []; // initialized in setup()
 
-	// true for method 1, false for method 2 (cf explanations for lifespan methods)
-	bool vehicle_lifespan_method <- true;
-	// method 1 for lifespan
 	// ages (in ticks) for each vehicles
 	map<string, list<int>> vehicles_age <- [];
 
@@ -162,34 +176,25 @@ species transport parent:bloc{
 		loop v over:vehicles{
 			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
 			number_of_vehicles_available[v] <- vehicle_data[v]["quantity"];
+			vehicles_created[v] <- 0;
 			
-			if vehicle_lifespan_method{
-				// initializing the lifespan of vehicles in method 1 : uniform distribution of age
-				if (v = "walk"){
-					continue;
-				}
-				vehicles_age[v] <- [];
-				int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
-				int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
-				int remainder <- number_of_vehicles[v] mod number_of_ticks;
-				list<int> first_half <- [];
-				list<int> second_half <- [];
-				loop times: remainder{
-					add (number_of_vehicles_per_tick + 1) to: first_half ;
-				}
-				loop times: number_of_ticks - remainder{
-					add (number_of_vehicles_per_tick) to: second_half ;
-				}
-				vehicles_age[v] <- first_half + second_half;
-				
-//					if (tick < remainder) {
-//						vehicles_age[v][tick] <- number_of_vehicles_per_tick + 1;
-//					}
-//					else {
-//						vehicles_age[v][tick] <- number_of_vehicles_per_tick;
-//					}
-				
+			// initializing the lifespan of vehicles in method 1 : uniform distribution of age
+			if (v = "walk"){
+				continue;
 			}
+			vehicles_age[v] <- [];
+			int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
+			int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
+			int remainder <- number_of_vehicles[v] mod number_of_ticks;
+			list<int> first_half <- [];
+			list<int> second_half <- [];
+			loop times: remainder{
+				add (number_of_vehicles_per_tick + 1) to: first_half ;
+			}
+			loop times: number_of_ticks - remainder{
+				add (number_of_vehicles_per_tick) to: second_half ;
+			}
+			vehicles_age[v] <- first_half + second_half;
 		}
 
 		list<transport_producer> producers <- [];
@@ -245,7 +250,7 @@ species transport parent:bloc{
 	    	tick_vehicle_usage_T <- producer.get_tick_vehicle_usage(); // collect vehicle usage
 	    	tick_vehicle_available_T <- number_of_vehicles; // collect total number of vehicles
 	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // collect total number of vehicles left available
-	    	
+	    	tick_vehicles_created_T <- vehicles_created; // collect the number of vehicles created this tick 
 	    	
 	    	ask transport_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -268,48 +273,68 @@ species transport parent:bloc{
 			number_of_vehicles_available[v] <- number_of_vehicles[v];
 		}
 		
-		if vehicle_lifespan_method {
-			// Method 1 :
-			loop v over:vehicles{
-				if (v = "walk"){
-					continue;
-				}
-				// get the number of vehicles removed this tick
-				int vehicles_removed <- last(vehicles_age[v]);
-				// reduce the total amount of vehicles known
-				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
-				// remove the oldest vehicles from the lifespan list
-				remove from:vehicles_age[v] index:length(vehicles_age[v])-1;
-				// add 0 new vehicles at tick 0 age
-				add item:0 to: vehicles_age[v] at: 0;
+		loop v over:vehicles{
+			if (v = "walk"){
+				continue;
 			}
-		}
-		else {
-			// Method 2 :
-			loop v over:vehicles{
-				if (v = "walk"){
-					continue;
+			list<int> current_ages <- vehicles_age[v];
+			int max_lifespan <- length(current_ages);
+			
+			list<int> next_ages <- []; 
+			loop times: max_lifespan { next_ages <+ 0; }
+			
+			int vehicles_removed_this_tick <- 0;
+			
+			loop i from: 0 to: max_lifespan - 1 {
+				int count <- current_ages[i];
+				if (count > 0) {
+					int n_age0 <- int(count * 0.3);
+					int n_age2 <- int(count * 0.3);
+					int n_age1 <- count - n_age0 - n_age2;
+					
+					next_ages[i] <- next_ages[i] + n_age0; // no age
+					
+					if (i+1 < max_lifespan) { // normal
+						next_ages[i+1] <- next_ages[i+1] + n_age1;
+					} else {
+						vehicles_removed_this_tick <- vehicles_removed_this_tick + n_age1;
+					}
+					
+					if (i+2 < max_lifespan) { // fast age
+						next_ages[i+2] <- next_ages[i+2] + n_age2;
+					} else {
+						vehicles_removed_this_tick <- vehicles_removed_this_tick + n_age2;
+					}
 				}
-				// get the number of vehicles removed this tick
-				int vehicles_removed <- int(number_of_vehicles[v] * (1/vehicle_data[v]["lifetime"]));
-				// reduce the total amount of vehicles known
-				number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed;
 			}
+			loop i from: 0 to: length(vehicles_age[v]) - 1 {
+			    vehicles_age[v][i] <- next_ages[i];
+			}
+			number_of_vehicles[v] <- number_of_vehicles[v] - vehicles_removed_this_tick;
 		}
 	}
 	
 	// creates new vehicles, for now no ressources used //TODO: in MICRO
 	action create_new_vehicles(string type, int quantity){
+		//write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
 		}
 		number_of_vehicles[type] <- number_of_vehicles[type] + quantity;
 		number_of_vehicles_available[type] <- number_of_vehicles_available[type] + quantity; 
-		// if using method 1 for lifespan, add it to the lifespan list
-		if vehicle_lifespan_method {
-			vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
+		vehicles_age[type][0] <- vehicles_age[type][0] + quantity; 
+		// ask for energy:
+		ask transport_producer{
+			float required_energy <- quantity * vehicle_creation_energy_cost[type];
+			bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			if (!energy_ok) {
+					// write("TRANSPORT : warning, we tried creating " + quantity + " " + type + " vehicles and asked the Energy bloc for " + required_energy + " energy (kWh), but we got a \"False\" return");
+					// BAD not enough energy !! or smth
+			}
 		}
+		// tracking vehicles created
+		vehicles_created[type] <- vehicles_created[type] + quantity;
 	}
 	
 	// calculates the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
@@ -362,14 +387,14 @@ species transport parent:bloc{
 			return tick_emissions;
 		}
 		
-		/* Returns the  */
+		/* Returns the usage of vehicles this tick */
 		map<string, float> get_tick_vehicle_usage{
 			return tick_vehicle_usage;
 		}
 		
 		/* Defines an external producer for a resource (Energy Bloc) */
 		action set_supplier(string product, bloc bloc_agent){
-			write name+": external producer "+bloc_agent+" set for "+product;
+			// write name+": external producer "+bloc_agent+" set for "+product;
 			external_producers[product] <- bloc_agent;
 		}
 		
@@ -386,6 +411,7 @@ species transport parent:bloc{
 			}
 			loop v over: vehicles{
 				tick_vehicle_usage[v] <- 0.0;
+				vehicles_created[v] <- 0.0;
 			}
 		}
 		
@@ -411,7 +437,8 @@ species transport parent:bloc{
 						map<string, float> specs <- vehicle_data[vehicle_name];
 						
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
-						float vehicle_km <- sub_quantity / specs["capacity"];
+						float capacity <- max(1, gauss(specs["capacity"], specs["capacity_std"])); 
+						float vehicle_km <- sub_quantity / capacity;
 						tick_vehicle_usage[vehicle_name] <- tick_vehicle_usage[vehicle_name] + vehicle_km;
 						number_of_vehicles_available[vehicle_name] <- number_of_vehicles_available[vehicle_name] - (vehicle_km / specs["distance_max_per_tick"]);
 						if (number_of_vehicles_available[vehicle_name] < 0) {
@@ -423,6 +450,7 @@ species transport parent:bloc{
 						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
 						float emissions <- vehicle_km * specs["emissions"];
 						tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
+						do send_ges_to_ecosystem(emissions);
 					}
 				}
 			}
@@ -433,6 +461,7 @@ species transport parent:bloc{
 				bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
 				if (!energy_ok) {
 					global_success <- false;
+					// write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
 				}
 			}
@@ -466,8 +495,8 @@ species transport parent:bloc{
 		}
 		
 		action consume(human h){
-		    loop c over: indivudual_consumption_T.keys{
-		    	consumed[c] <- consumed[c]+indivudual_consumption_T[c];
+		    loop c over: individual_consumption_T.keys{
+		    	consumed[c] <- consumed[c]+individual_consumption_T[c] * humans_per_agent;
 		    }
 	    }
 	}
@@ -479,46 +508,101 @@ species transport parent:bloc{
  * 
  * Note : experiment car inherit another experiment, but we can't combine displays from multiple experiments at the same time. 
  * If needed, a new experiment combining all those displays should be added, for example in the Main code of the simulation.
- * TODO: modify it to display the data we actually want
  */
 experiment run_transport type: gui {
+	int graph_every_X_ticks <- 1;
 	output {
-		display Transport_information {
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.25, 0} {
+		display Transport_information refresh:every(graph_every_X_ticks #cycles){
+			
+			// ROW 1
+			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.5, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
-			
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0.25, 0} {
+			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0, -0.25} y_log_scale:true {
 			    loop c over: production_outputs_T {
 			    	data c value: tick_production_T[c];
 			    }
 			}
+			chart "Taxis age remaining" type: series size: {0.5, 0.5} position: {0.5, -0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            list<int> distrib <- t_agent.vehicles_age["taxi"];
+		            if (distrib != nil) { data "Taxis" value: reverse(distrib) style: bar color: #green; }
+		        }
+		    }
+		    chart "Minibuses and Trucks age remaining" type: series size: {0.5, 0.5} position: {1, -0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		        	list<int> m_distrib <- t_agent.vehicles_age["minibus"];
+		            list<int> t_distrib <- t_agent.vehicles_age["truck"];
+		            if (m_distrib != nil) { data "Minibuses" value: reverse(m_distrib) style: bar color: #yellow; }
+		            if (t_distrib != nil) { data "Trucks" value: reverse(t_distrib) style: bar color: #red; }
+		        }
+		    }
 			
-			chart "Resources usage (Energy)" type: series size: {0.5,0.5} position: {-0.25, 0.5} {
+			
+			// ROW 2
+			// Should be modified if we ever have more than 1 energy type
+			chart "Energy Used (kWh)" type: series size: {0.5,0.5} position: {-0.5, 0.25} {
 			    loop r over: production_inputs_T {
-			    	// Affiche les kWh consommés
 			    	data r value: tick_resources_used_T[r] color: #red;
 			    }
 			}
-			
-			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0.25, 0.5} {
+			chart "Production emissions (CO2)" type: series size: {0.5,0.5} position: {0, 0.25} {
 			    loop e over: production_emissions_T {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
-			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0.75, 0} {
+			chart "Trains age remaining" type: series size: {0.5, 0.5} position: {0.5, 0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            list<int> distrib <- t_agent.vehicles_age["train"];
+		            if (distrib != nil) { data "Trains" value: reverse(distrib) style: bar color: #blue; }
+		        }
+		    }
+		    chart "Bicycles age remaining" type: series size: {0.5, 0.5} position: {1, 0.25} {
+		        transport t_agent <- first(transport);
+		        if (t_agent != nil) {
+		            
+		            list<int> distrib <- t_agent.vehicles_age["bicycle"];
+		            if (distrib != nil) { data "Bicycles" value: reverse(distrib) style: bar color: #pink; }
+		        }
+		    }
+			
+			
+			// ROW 3
+			chart "Total Vehicles" type: series size: {0.5,0.5} position: {-0.5, 0.75} y_log_scale:true {
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicle_available_T[v];
+			    	// string new_label <- v + "_left";
+			    	// data new_label value: tick_vehicle_available_left_T[v];
+			    }
+			}
+			chart "Vehicle Usage (Km)" type: series size: {0.5,0.5} position: {0, 0.75} {
 			    loop v over: vehicles {
 			    	data v value: tick_vehicle_usage_T[v];
 			    }
 			}
-			chart "Vehicles total" type: series size: {0.5,0.5} position: {0.75, 0.5} y_log_scale:true {
+			chart "Vehicles Created (this tick)" type: series size: {0.5,0.5} position: {0.5, 0.75} y_log_scale:true{
 			    loop v over: (vehicles) {
-			    	data v value: tick_vehicle_available_T[v];
-			    	string new_label <- v + "_left";
-			    	data new_label value: tick_vehicle_available_left_T[v];
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicles_created_T[v];
+			    }
+			}
+			chart "Unused Vehicles (this tick)" type: series size: {0.5,0.5} position: {1, 0.75} y_log_scale:true {
+			    loop v over: (vehicles) {
+			    	if (v = "walk") {
+			    		continue;
+			    	}
+			    	data v value: tick_vehicle_available_left_T[v];
 			    }
 			}
 	    }
