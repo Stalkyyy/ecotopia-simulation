@@ -15,26 +15,31 @@ import "../API/API.gaml"
 global{
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
-	map<string, int> init_units <- ["wood"::2000, "modular"::1200];
+	map<string, int> init_units <- ["wood"::1700, "modular"::1700];
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
 	map<string, float> surface_per_unit <- ["wood"::80.0, "modular"::60.0]; // m2 per unit
 	
 	// Resource needs per unit (defaults, to be refined with data)
 	map<string, float> resource_per_unit_wood <- ["kg wood"::24000.0, "kWh energy"::500.0]; // assume ~800 kg/m3 -> 30 m3 -> 24 000 kg
-	map<string, float> resource_per_unit_modular <- ["kg_cotton"::800.0, "kWh energy"::400.0];
+	map<string, float> resource_per_unit_modular <- ["kg_cotton"::30000.0, "kWh energy"::400.0];
 	
 	float target_occupancy_rate <- 0.95; // aim for ~95% occupancy
-	int max_units_per_tick <- 20; // build rate cap
-	float constructible_surface_total <- 100000.0; // fallback surface cap (replaced by ecosystem land_stock when available)
+	int max_units_per_tick <- 5; // build rate cap (scaled to represented population)
+	float constructible_surface_total <- 1e9; // fallback surface cap (replaced by ecosystem land_stock when available)
 	float available_land_from_ecosystem <- constructible_surface_total; // synced each tick from ecosystem
+	float population_scaling_factor <- 6700.0; // how many real people a human agent represents
 	
 	/* State */
 	int population_count <- 0; // last observed population size (for charts)
+	float population_scaled <- 0.0; // scaled population for charts/consistency
 	map<string, int> units <- copy(init_units);
 	map<string, float> tick_resources_used <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 	map<string, int> tick_constructions <- ["wood"::0, "modular"::0];
+	map<string, float> tick_constructions_scaled <- ["wood"::0.0, "modular"::0.0];
 	float surface_used -> {sum(housing_types collect (surface_per_unit[each] * units[each]))};
+	float surface_used_scaled -> {surface_used * population_scaling_factor};
 	float total_capacity -> {sum(housing_types collect (capacity_per_unit[each] * units[each]))};
+	float total_capacity_scaled_state <- 0.0; // scaled capacity for charts/output
 	
 	init{
 		// Ensure coordinator exists (experiment should be launched from Main)
@@ -73,8 +78,12 @@ species urbanism parent: bloc{
 		
 		int occupants <- length(pop);
 		population_count <- occupants;
-		float desired_capacity <- occupants / target_occupancy_rate;
-		float deficit <- max(0.0, desired_capacity - total_capacity);
+		float occupants_scaled <- occupants * population_scaling_factor;
+		population_scaled <- occupants_scaled;
+		float total_capacity_scaled <- total_capacity * population_scaling_factor;
+		total_capacity_scaled_state <- total_capacity_scaled;
+		float desired_capacity <- occupants_scaled / target_occupancy_rate;
+		float deficit <- max(0.0, desired_capacity - total_capacity_scaled);
 		
 		int units_needed <- ceil(deficit / average_capacity_per_unit());
 		int planned_units <- min(max_units_per_tick, units_needed);
@@ -90,12 +99,14 @@ species urbanism parent: bloc{
 				do add_units(wood_plan, modular_plan);
 				tick_constructions["wood"] <- wood_plan;
 				tick_constructions["modular"] <- modular_plan;
+				tick_constructions_scaled["wood"] <- wood_plan * population_scaling_factor;
+				tick_constructions_scaled["modular"] <- modular_plan * population_scaling_factor;
 			}
 		}
 		
 		// publish current capacity for other blocs
 		ask producer {
-			tick_outputs["total_housing_capacity"] <- total_capacity;
+			tick_outputs["total_housing_capacity"] <- total_capacity_scaled;
 		}
 		
 		tick_resources_used <- producer.get_tick_inputs_used(); // collect for charts/logs
@@ -108,11 +119,12 @@ species urbanism parent: bloc{
 	
 	map<string, float> compute_resource_demand(int wood_units, int modular_units){
 		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
-		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units;
-		demand["kg_cotton"] <- resource_per_unit_modular["kg_cotton"] * modular_units;
-		demand["kWh energy"] <- resource_per_unit_wood["kWh energy"] * wood_units
-			+ resource_per_unit_modular["kWh energy"] * modular_units;
-		demand["m² land"] <- surface_per_unit["wood"] * wood_units + surface_per_unit["modular"] * modular_units;
+		float scale <- population_scaling_factor;
+		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units * scale;
+		demand["kg_cotton"] <- resource_per_unit_modular["kg_cotton"] * modular_units * scale;
+		demand["kWh energy"] <- (resource_per_unit_wood["kWh energy"] * wood_units
+			+ resource_per_unit_modular["kWh energy"] * modular_units) * scale;
+		demand["m² land"] <- (surface_per_unit["wood"] * wood_units + surface_per_unit["modular"] * modular_units) * scale;
 		return demand;
 	}
 	
@@ -168,6 +180,9 @@ species urban_producer parent: production_agent{
 			tick_resources_used[r] <- 0.0;
 		}
 		tick_outputs["total_housing_capacity"] <- 0.0;
+		total_capacity_scaled_state <- 0.0;
+		tick_constructions_scaled["wood"] <- 0.0;
+		tick_constructions_scaled["modular"] <- 0.0;
 	}
 	
 	map<string, float> get_tick_inputs_used{
@@ -208,12 +223,12 @@ experiment run_urbanism type: gui {
 	output {
 		display Urbanism_information {
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
-				data "capacity" value: total_capacity color: #blue;
-				data "population" value: population_count color: #darkgray;
+				data "capacity (scaled)" value: total_capacity_scaled_state color: #blue;
+				data "population (scaled)" value: population_scaled color: #darkgray;
 			}
 			chart "Constructions per tick" type: series size: {0.5,0.5} position: {0.5, 0} {
-				data "wood" value: tick_constructions["wood"] color: #sienna;
-				data "modular" value: tick_constructions["modular"] color: #orange;
+				data "wood (scaled)" value: tick_constructions_scaled["wood"] color: #sienna;
+				data "modular (scaled)" value: tick_constructions_scaled["modular"] color: #orange;
 			}
 			chart "Resource use" type: series size: {0.5,0.5} position: {0, 0.5} {
 				loop r over: tick_resources_used.keys{
@@ -221,7 +236,7 @@ experiment run_urbanism type: gui {
 				}
 			}
 			chart "Surface saturation" type: series size: {0.5,0.5} position: {0.5, 0.5} {
-				data "surface_used" value: surface_used color: #green;
+				data "surface_used (scaled)" value: surface_used_scaled color: #green;
 				data "constructible_surface" value: constructible_surface_total color: #black;
 			}
 		}
