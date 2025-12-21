@@ -29,9 +29,9 @@ global {
      */    
      
     // Water stock
-    float initial_water_stock <- 2.10e14;  									
-    float water_stock <- initial_water_stock;
-    float water_max_stock <- initial_water_stock; 								
+    float initial_water_stock_l <- 2.10e14;  									
+    float water_stock_l <- initial_water_stock_l;
+    float water_max_stock_l <- initial_water_stock_l; 								
     
     // Monthly production
     float monthly_water_regeneration <- 1.75e13;
@@ -44,13 +44,13 @@ global {
     // Forest area
     float total_forest_area_m2 <- 1.77e11;  			
     
-    // Wood growth per m^2 per month
-    float monthly_wood_growth <- 3.66e9;										
+    // Monthly wood growth in kg
+    float monthly_wood_growth_kg <- 3.66e9;										
     
-    // Initial wood stock
+    // Initial wood stock in kg
     float initial_wood_stock <- 1.55e12;  							
-    float wood_stock <- initial_wood_stock;
-    float wood_max_stock <- initial_wood_stock;
+    float wood_stock_kg <- initial_wood_stock;
+    float wood_max_stock_kg <- initial_wood_stock;
     
     
     /*
@@ -151,10 +151,10 @@ species ecosystem parent:bloc {
     action regenerate_resources {
     	
         // Water regeneration : constant amount per month
-        water_stock <- min(water_stock + monthly_water_regeneration, water_max_stock);        
+        water_stock_l <- min(water_stock_l + monthly_water_regeneration, water_max_stock_l);        
         
         // Wood regeneration : constant amount per month 
-        wood_stock <- min(wood_stock + monthly_wood_growth, wood_max_stock);
+        wood_stock_kg <- min(wood_stock_kg + monthly_wood_growth_kg, wood_max_stock_kg);
         
         // Land: no regeneration (only tracking what's occupied)
         // land_stock decreases as land_occupied increases
@@ -226,10 +226,10 @@ species ecosystem parent:bloc {
             
             // WATER
             if("L water" in demand.keys){
-                float water_requested <- demand["L water"];
-                if(water_requested <= water_stock){
-                    water_stock <- water_stock - water_requested;
-                    tick_production["L water"] <- tick_production["L water"] + water_requested;
+                float water_requested_l <- demand["L water"];
+                if(water_requested_l <= water_stock_l){
+                    water_stock_l <- water_stock_l - water_requested_l;
+                    tick_production["L water"] <- tick_production["L water"] + water_requested_l;
                 } else {
                     all_available <- false;
                     // tick_production["L water"] <- tick_production["L water"] + water_stock;
@@ -256,8 +256,8 @@ species ecosystem parent:bloc {
             // WOOD
             if("kg wood" in demand.keys){
                 float wood_requested <- demand["kg wood"];
-                if(wood_requested <= wood_stock){
-                    wood_stock <- wood_stock - wood_requested;
+                if(wood_requested <= wood_stock_kg){
+                    wood_stock_kg <- wood_stock_kg - wood_requested;
                     tick_production["kg wood"] <- tick_production["kg wood"] + wood_requested;
                 } else {
                     all_available <- false;
@@ -320,14 +320,14 @@ experiment run_ecosystem type: gui {
             
             // Water stock evolution
             chart "Water stock (Liters)" type: series size: {0.5,0.5} position: {0, 0} {
-                data "Stock" value: water_stock;
-                data "Max available" value: water_max_stock;
+                data "Stock" value: water_stock_l;
+                data "Max available" value: water_max_stock_l;
             }
             
             // Wood stock evolution
             chart "Wood stock (kg)" type: series size: {0.5,0.5} position: {0.5, 0} {
-                data "Stock" value: wood_stock;
-                data "Max" value: wood_max_stock;
+                data "Stock" value: wood_stock_kg;
+                data "Max" value: wood_max_stock_kg;
             }
             
             // Land usage
