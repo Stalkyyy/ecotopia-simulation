@@ -74,8 +74,8 @@ global{
 	int nb_humans <- 6700;
 	
 	/* Consumption data */
-	float vegetarian_proportion <- 0.022;
-	map<string, float> indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
+	//float vegetarian_proportion <- 0.022;
+	//map<string, float> indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
 	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
@@ -121,7 +121,7 @@ species agricultural parent:bloc{
 	
 	action tick(list<human> pop) {
 		do collect_last_tick_data();
-		do population_activity(pop);
+		//do population_activity(pop);
 	}
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -158,7 +158,7 @@ species agricultural parent:bloc{
 	    		if not empty(stock[p]){
 	    			list<map<string, float>> aged_stock <- [];
 	    			loop lot over: stock[p]{
-	    				lot["nb_ticks"] <- lot["nb_ticks"] + 1;
+	    				lot["nb_ticks"] <- lot["nb_ticks"] + 1.0;
 	    				
 	    				if lot["nb_ticks"] <= lifetime_productions[p]{
 							aged_stock << lot;
@@ -180,7 +180,7 @@ species agricultural parent:bloc{
 	    		float surplus <- produced - demand_to_produce;
 	    		
 	    		if surplus > 0.0{
-	    			stock[p] <- stock[p] + [["quantity"::surplus, "nb_ticks"::0]];
+	    			stock[p] <- stock[p] + [["quantity"::surplus, "nb_ticks"::0.0]];
 	    		}
 	    	}
 	    	
@@ -190,17 +190,15 @@ species agricultural parent:bloc{
 			}
 	    	
 	    	// sending the quantities of meat and vegetables produced (excluding surplus) to the population
-	    	map<string,float> food_production <- [];
+	    	/*map<string,float> food_production <- [];
 	    	loop fp over: tick_pop_consumption_A.keys{
 	    		if(fp != "kg_cotton"){
 	    			food_production[fp] <- tick_pop_consumption_A[fp];
 	    		}
-	    	}
-			/*
-	    	ask one_of(residents){
+	    	}*/
+	    	/*ask one_of(residents){
 	    		do send_production_agricultural(food_production);
-	    	}
-			*/	    	
+	    	}	*/    	
 	    	
 	    	ask agri_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -213,7 +211,7 @@ species agricultural parent:bloc{
     	}
 	}
 	
-	action population_activity(list<human> pop) {
+	/*action population_activity(list<human> pop) {
 		// to vary the probability of vegetarians
 		indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
 		
@@ -233,7 +231,7 @@ species agricultural parent:bloc{
 		    	}
 		    }
     	}    	
-    }
+    }*/
     
     
     float get_stock_to_consume(string p, float demand){
@@ -246,7 +244,8 @@ species agricultural parent:bloc{
 		
 		// We sort the stock according to the age (descending) of the resources to consume the oldest ones first
 		// FIFO operation
-		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		//list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		list<map<string, float>> sorted_stock <- sort_by(copy(stock[p]), -(each["nb_ticks"]));
 		
 		loop lot over:sorted_stock{
 			if stock_to_use >= desired_from_stock{
@@ -264,7 +263,8 @@ species agricultural parent:bloc{
 		float stock_to_use <- demand;
 		
 		// sorting the stock according to the age (descending) of the resources (FIFO)
-		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		//list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
+		list<map<string, float>> sorted_stock <- sort_by(copy(stock[p]), -(each["nb_ticks"]));
 		
 		list<map<string, float>> updated_stock <- [];
 		
@@ -401,6 +401,8 @@ species agricultural parent:bloc{
 						do send_ges_to_ecosystem(tick_emissions[e]);
 					}
 					tick_production[c] <- tick_production[c] + augmented_demand;
+					
+					tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + demand[c];
 				
 				}
 			}
@@ -441,11 +443,11 @@ species agricultural parent:bloc{
 		}
 		
 		action consume(human h){ 
-		    loop c over: indivudual_consumption_A.keys{
+		    /*loop c over: indivudual_consumption_A.keys{
 		    	if(c != "kg_cotton"){
 		    		consumed[c] <- consumed[c]+ (indivudual_consumption_A[c] * nb_humans);
 		    	}
-		    }
+		    }*/
 		}
 	}
 }
@@ -460,7 +462,7 @@ species agricultural parent:bloc{
  */
 experiment run_agricultural type: gui {
 	
-	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
+	//parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
 	parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
 	parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
 	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
