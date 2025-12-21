@@ -323,6 +323,9 @@ species transport parent:bloc{
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
 		}
+		
+		// TODO in MICRO
+		// For macro, we do not check if we have enough energy
 		number_of_vehicles[type] <- number_of_vehicles[type] + quantity;
 		number_of_vehicles_available[type] <- number_of_vehicles_available[type] + quantity;
 		vehicles_age[type][0] <- vehicles_age[type][0] + quantity;
@@ -336,11 +339,13 @@ species transport parent:bloc{
 					// BAD not enough energy !! or smth
 			}
 		}
+		// TODO in MICRO
+		// For macro, we suppose we have enough energy
 		// tracking vehicles created
 		vehicles_created[type] <- vehicles_created[type] + quantity;
 	}
 	
-	// calculates the consumption in transports for the population (TODO: see if this is done here or by the Population bloc?)
+	// calculates the consumption in transports for the population
 	action population_activity(list<human> pop) {
 		
     	ask pop{ // execute the consumption behavior of the population
@@ -428,6 +433,8 @@ species transport parent:bloc{
 			loop service over: demand.keys{
 				float quantity_asked <- demand[service]; // already in km*pers or km*kg
 				
+				// TODO in MICRO
+				// For macro, we suppose we can create the service
 				tick_production[service] <- tick_production[service] + quantity_asked; // "we have produced this service"
 				
 				map<string, float> split <- modal_split[service]; // get vehicle mix for this service
@@ -442,6 +449,9 @@ species transport parent:bloc{
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
 						float capacity <- max(1, gauss(specs["capacity"], specs["capacity_std"])); 
 						float vehicle_km <- sub_quantity / capacity;
+						
+						// TODO in MICRO
+						// For macro, we suppose we can do this
 						tick_vehicle_usage[v] <- tick_vehicle_usage[v] + vehicle_km;
 						number_of_vehicles_available[v] <- number_of_vehicles_available[v] - (vehicle_km / specs["distance_max_per_tick"]);
 						if (number_of_vehicles_available[v] < 0) {
@@ -451,12 +461,18 @@ species transport parent:bloc{
 						}
 						
 						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
+						
+						// TODO in MICRO
+						// For macro, we suppose we can do this so we emit directly
 						float emissions <- vehicle_km * specs["emissions"];
 						tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
 						do send_ges_to_ecosystem(emissions);
 					}
 				}
 			}
+			
+			// TODO in MICRO
+			// For macro, we suppose we can use all the energy needed
 			tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + total_energy_needed;
 			
 			if (total_energy_needed > 0 and external_producers contains_key "kWh energy"){
