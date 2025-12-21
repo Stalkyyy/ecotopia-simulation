@@ -22,6 +22,7 @@ global{
 	// Resource needs per unit (defaults, to be refined with data)
 	map<string, float> resource_per_unit_wood <- ["kg wood"::24000.0, "kWh energy"::500.0]; // assume ~800 kg/m3 -> 30 m3 -> 24 000 kg
 	map<string, float> resource_per_unit_modular <- ["kg_cotton"::30000.0, "kWh energy"::400.0];
+	map<string, float> energy_use_per_unit <- ["wood"::300.0, "modular"::20.0]; // monthly kWh per unit (wood higher, modular low)
 	
 	float target_occupancy_rate <- 0.95; // aim for ~95% occupancy
 	int max_units_per_tick <- 5; // build rate cap (scaled to represented population)
@@ -104,12 +105,24 @@ species urbanism parent: bloc{
 			}
 		}
 		
+		// continuous energy consumption of existing housing stock
+		do consume_housing_energy;
+		
 		// publish current capacity for other blocs
 		ask producer {
 			tick_outputs["total_housing_capacity"] <- total_capacity_scaled;
 		}
 		
 		tick_resources_used <- producer.get_tick_inputs_used(); // collect for charts/logs
+	}
+	
+	action consume_housing_energy{
+		float base_energy_need <- sum(housing_types collect (energy_use_per_unit[each] * units[each]));
+		float total_energy_need <- base_energy_need * population_scaling_factor;
+		if(total_energy_need > 0){
+			map<string, float> energy_demand <- ["kWh energy"::total_energy_need];
+			bool energy_ok <- producer.produce(energy_demand);
+		}
 	}
 	
 	/* Helpers */
