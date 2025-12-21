@@ -43,13 +43,12 @@ global {
 		create residents number: 1 {
 			enabled <- enable_demography; // enable or not the demography
 		}
-
-		create agricultural number: 1;
-		create energy number: 1;
-		create transport number: 1;
-		create ecosystem number: 1;
-		create urbanism number: 1;
-		create coordinator number: 1; // instanciate the coordinator
+		create agricultural number:1;
+		create energy number:1;
+		create transport number:1;
+		create ecosystem number:1;
+		create urbanism number:1;
+		create coordinator number:1; // instanciate the coordinator
 		// start simulation :
 		ask coordinator {
 			do register_all_blocs; // register the blocs in the coordinator
