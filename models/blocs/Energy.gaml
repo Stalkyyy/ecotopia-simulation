@@ -35,6 +35,7 @@ global {
 	map<string, map<string, float>> tick_sub_production_E <- [];
 	map<string, map<string, float>> tick_sub_resources_used_E <- [];
 	map<string, map<string, float>> tick_sub_emissions_E <- [];
+	map<string, int> tick_sub_nb_installations <- [];
 
 	init{ 
 		if (length(coordinator) = 0){
@@ -118,13 +119,14 @@ species energy parent:bloc {
 	}
 	
 	action collect_last_tick_data{
-		if(cycle > 0){ // skip it the first tick
+		if (cycle > 0) {
 			tick_pop_consumption_E <- consumer.get_tick_consumption(); 		// collect consumption behaviors
-    		tick_resources_used_E <- producer.get_tick_inputs_used(); 		// collect resources used
+			
+			ask producer { do snapshot_sub_tick_data; }
+			tick_resources_used_E <- producer.get_tick_inputs_used(); 		// collect resources used
 	    	tick_production_E <- producer.get_tick_outputs_produced(); 		// collect production
-	    	tick_emissions_E <- producer.get_tick_emissions(); 				// collect emissions
+	    	tick_emissions_E <- producer.get_tick_emissions(); 				// collect emissions	    	
 	    	
-	    	// Collect per-source statistics
 	    	ask energy_consumer{ // prepare next tick on consumer side
 	    		do reset_tick_counters;
 	    	}
@@ -132,7 +134,7 @@ species energy parent:bloc {
 	    	ask energy_producer{ // prepare next tick on producer side
 	    		do reset_tick_counters;
 	    	}
-    	}
+		}
 	}
 	
 	action population_activity(list<human> pop) {
@@ -181,8 +183,11 @@ species energy parent:bloc {
 		}
 
 		action reset_tick_counters{
-			do not_sub_reset_tick;
-			do sub_reset_tick;
+			loop sub_producer over:sub_producers {
+				ask sub_producer {
+					do reset_tick_counters;
+				}
+			}
 		}
 		
 		action not_sub_reset_tick {
@@ -194,14 +199,6 @@ species energy parent:bloc {
 			}
 			loop e over: production_emissions_E{
 				tick_emissions[e] <- 0.0;
-			}
-		}
-		
-		action sub_reset_tick {
-			loop sub_producer over:sub_producers {
-				ask sub_producer {
-					do reset_tick_counters;
-				}
 			}
 		}
 
@@ -249,31 +246,43 @@ species energy parent:bloc {
 					}
 				}				
 			}
-			
-			do not_sub_reset_tick;			
-			
-			// Aggregate results
-			loop sub_producer over:sub_producers {
-				string source_name <- sub_producer.get_source_name();
-				ask sub_producer {
-					do update_tick_data;
-				}
-				
-				loop key over:tick_sub_production_E[source_name].keys {
-					tick_production[key] <- tick_production[key] + tick_sub_production_E[source_name][key];
-				}
-				
-				loop key over:tick_sub_resources_used_E[source_name].keys {
-					tick_resources_used[key] <- tick_resources_used[key] + tick_sub_resources_used_E[source_name][key];
-				}
-				
-				loop key over:tick_sub_emissions_E[source_name].keys {
-					tick_emissions[key] <- tick_emissions[key] + tick_sub_emissions_E[source_name][key];
-				}
-			}
-						       
+									       
 			return ok;
 		}
+		
+		// To update the finals values to print in experiments.
+        action snapshot_sub_tick_data {
+        	do not_sub_reset_tick();
+        	
+            loop sub_producer over:sub_producers {
+                string source_name <- sub_producer.get_source_name();
+                map<string, float> sub_prod <- sub_producer.get_tick_outputs_produced();
+                map<string, float> sub_inputs <- sub_producer.get_tick_inputs_used();
+                map<string, float> sub_emis <- sub_producer.get_tick_emissions();
+                
+                tick_sub_production_E[source_name] <- copy(sub_prod);
+                tick_sub_resources_used_E[source_name] <- copy(sub_inputs);
+                tick_sub_emissions_E[source_name] <- copy(sub_emis);
+                
+                loop p over: production_outputs_E {
+                	if (p in tick_sub_production_E[source_name].keys) {
+                		tick_production[p] <- tick_production[p] + tick_sub_production_E[source_name][p];
+                	}
+                }
+                loop u over: production_inputs_E {
+                	if (u in tick_sub_resources_used_E[source_name].keys) {
+                		tick_resources_used[u] <- tick_resources_used[u] + tick_sub_resources_used_E[source_name][u];
+                	}
+                }
+                loop e over: production_emissions_E {
+                	if (e in tick_sub_emissions_E[source_name].keys) {
+                		tick_emissions[e] <- tick_emissions[e] + tick_sub_emissions_E[source_name][e];
+                	}
+                }
+                
+                tick_sub_nb_installations[source_name] <- sub_producer.get_nb_installations();
+            }
+        }
 		
 		action set_supplier(string product, bloc bloc_agent){
 			loop sub_producer over:sub_producers.values {
@@ -311,9 +320,9 @@ species energy parent:bloc {
 		}
 		
 		action update_tick_data {
-			tick_sub_production_E[source_name] <- tick_production;
-			tick_sub_resources_used_E[source_name] <- tick_resources_used;
-			tick_sub_emissions_E[source_name] <- tick_emissions;
+			tick_sub_production_E[source_name] <- copy(tick_production);
+			tick_sub_resources_used_E[source_name] <- copy(tick_resources_used);
+			tick_sub_emissions_E[source_name] <- copy(tick_emissions);
 		}
 		 
 		float get_total_capacity_kwh {
@@ -330,16 +339,28 @@ species energy parent:bloc {
 			return tick_emissions;
 		}
 		
+		int get_nb_installations {
+			return nb_installations;
+		}
+		
 		action set_supplier(string product, bloc bloc_agent){
 			write name+": external producer "+bloc_agent+" set for"+product;
 			external_producers[product] <- bloc_agent;
 		}
 		 
 		action reset_tick_counters {
-			tick_resources_used <- ["L water"::0.0, "m² land"::0.0];
-			tick_production <- ["kWh energy"::0.0];
-			tick_emissions <- ["gCO2e emissions"::0.0];
+			loop u over: production_inputs_E{
+				tick_resources_used[u] <- 0.0;
+			}
+			loop p over: production_outputs_E{
+				tick_production[p] <- 0.0;
+			}
+			loop e over: production_emissions_E{
+				tick_emissions[e] <- 0.0;
+			}
+			
 			remaining_capacity_kwh_this_tick <- get_total_capacity_kwh();
+			tick_resources_used["m² land"] <- land_occupied_m2;
 		}
 		 
 		/**
@@ -353,7 +374,7 @@ species energy parent:bloc {
 					if (ok) {
 						nb_installations <- nb_installations + 1;
 						land_occupied_m2 <- land_occupied_m2 + energy_cfg[source_name]["land_per_installation_m2"];
-						 remaining_capacity_kwh_this_tick <- remaining_capacity_kwh_this_tick + energy_cfg[source_name]["capacity_per_installation_kwh"];
+						remaining_capacity_kwh_this_tick <- remaining_capacity_kwh_this_tick + energy_cfg[source_name]["capacity_per_installation_kwh"];
 					} else {
 						break;
 					}
@@ -370,8 +391,8 @@ species energy parent:bloc {
 		map<string, float> allocate_resources(float requested_kwh) {
 			map<string, float> result <- ["allocated_kwh"::0.0, "shortfall_kwh"::0.0];
 			
-			if(requested_kwh > get_total_capacity_kwh()){
-				do try_build_installations(requested_kwh - get_total_capacity_kwh());
+			if(requested_kwh > remaining_capacity_kwh_this_tick){
+				do try_build_installations(requested_kwh - remaining_capacity_kwh_this_tick);
 			}
 			
 			float actual_alloc_kwh <- min(requested_kwh, remaining_capacity_kwh_this_tick);
@@ -413,7 +434,7 @@ species energy parent:bloc {
 		bool produce(map<string, float> demand) {
 			if("kWh energy" in demand.keys) {
 				float req <- demand["kWh energy"];
-				if (req = 0) {
+				if (req <= 0) {
 					return true;
 				}
 				
@@ -475,8 +496,9 @@ species energy parent:bloc {
 		 * Consumption varies slightly
 		 */
 		action consume(human h){
-			float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
-			float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
+			// float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
+			// float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
+			float individual_kwh <- human_cfg["avg_kwh_per_person"];
 			
 			// Add to total consumption
 			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * human_cfg["humans_per_agent"];
@@ -533,20 +555,36 @@ experiment run_energy type: gui {
 			}
 			
 			chart "Land usage by source (m²)" type: series size: {0.25,0.25} position: {0.5, 0.25} {
-					data "Nuclear" value: tick_sub_resources_used_E["nuclear"]["m² land"];
-					data "Solar" value: tick_sub_resources_used_E["solar"]["m² land"];
-					data "Wind" value: tick_sub_resources_used_E["wind"]["m² land"];
-					data "Hydro" value: tick_sub_resources_used_E["hydro"]["m² land"];
+				data "Nuclear" value: tick_sub_resources_used_E["nuclear"]["m² land"];
+				data "Solar" value: tick_sub_resources_used_E["solar"]["m² land"];
+				data "Wind" value: tick_sub_resources_used_E["wind"]["m² land"];
+				data "Hydro" value: tick_sub_resources_used_E["hydro"]["m² land"];
 			}
 			
 			chart "Water usage by source (L)" type: series size: {0.25,0.25} position: {0.75, 0.25} {
-					data "Nuclear" value: tick_sub_resources_used_E["nuclear"]["L water"];
-					data "Solar" value: tick_sub_resources_used_E["solar"]["L water"];
-					data "Wind" value: tick_sub_resources_used_E["wind"]["L water"];
-					data "Hydro" value: tick_sub_resources_used_E["hydro"]["L water"];
+				data "Nuclear" value: tick_sub_resources_used_E["nuclear"]["L water"];
+				data "Solar" value: tick_sub_resources_used_E["solar"]["L water"];
+				data "Wind" value: tick_sub_resources_used_E["wind"]["L water"];
+				data "Hydro" value: tick_sub_resources_used_E["hydro"]["L water"];
 			}
 			
-			chart "Population direct consumption (kWh)" type: series size: {0.25,0.25} position: {0, 0.5} {
+			chart "Number of nuclear reactors" type: series size: {0.25, 0.25} position: {0, 0.5} {
+				data "nb_installations" value: tick_sub_nb_installations["nuclear"];
+			}
+			
+			chart "Number of solar park" type: series size: {0.25, 0.25} position: {0.25, 0.5} {
+				data "nb_installations" value: tick_sub_nb_installations["solar"];
+			}
+			
+			chart "Number of wind farm" type: series size: {0.25, 0.25} position: {0.50, 0.5} {
+				data "nb_installations" value: tick_sub_nb_installations["wind"];
+			}
+			
+			chart "Number of hydropower plant" type: series size: {0.25, 0.25} position: {0.75, 0.5} {
+				data "nb_installations" value: tick_sub_nb_installations["hydro"];
+			}
+			
+			chart "Population direct consumption (kWh)" type: series size: {0.25,0.25} position: {0, 0.75} {
 			    data "Population direct consumption (kWh)" value: tick_pop_consumption_E["kWh energy"];
 			}
 	    }
