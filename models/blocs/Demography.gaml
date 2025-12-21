@@ -97,9 +97,7 @@ species residents parent:bloc{
 	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
-	
-	residents_producer producer <- nil;
-	
+		
 	/* setup the resident agent : initialize the population */
 	action setup{
 		do init_population;
