@@ -80,14 +80,23 @@ global{
 	map<string, float> tick_emissions_A <- [];
 	
 	// paramètres pour la chasse (sangliers)
-	int wilds_animals <- 2000000; // près de 2 millions de sangliers en France
-	int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
+	float hunting_over_farm <- 0.4; // proportions de viandes produites venant de la chasse
+	map<string, map<string, float>> wild_animals <- [
+		"wild_boar"::["quantity"::2000000, "hunting_rate"::0.038, "kg_per_animal"::90.0, "reproduction_rate"::0.079, "mortality_rate"::0.056], // normalement newborns = 250 000 mais croissance expo
+		"deer"::["quantity"::1500000, "hunting_rate"::0.03, "kg_per_animal"::24.0, "reproduction_rate"::0.02, "mortality_rate"::0.028],
+		"pigeon"::["quantity"::5000000, "hunting_rate"::0.1, "kg_per_animal"::0.5, "reproduction_rate"::0.05, "mortality_rate"::0.066],
+		"rabbit"::["quantity"::3000000, "hunting_rate"::0.04, "kg_per_animal"::0.75, "reproduction_rate"::0.068, "mortality_rate"::0.113],
+		"random_animal"::["quantity"::50000000, "hunting_rate"::0.3, "kg_per_animal"::10.0, "reproduction_rate"::0.060, "mortality_rate"::0.070]
+	];
+	//int wild_boar <- 2000000; // près de 2 millions de sangliers en France
+	//int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
     //float animals_reproduction <- 0.15; // ~ 1 à 2 portées par an donc 1/6 
     //int nb_per_litters <- 5; // 5 à 6 marcassins par portées
-    float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
+    //float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
     
-    float animals_reproduction <- hunting_proportion / wilds_animals;
+    //float animals_reproduction <- hunting_proportion / wilds_animals;
     int hunted_animals <- 0;
+    float hunted_animals_kg <- 0.0;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -121,6 +130,9 @@ species agricultural parent:bloc{
 	action tick(list<human> pop) {
 		do collect_last_tick_data();
 		do population_activity(pop);
+		do reproduce_animals;
+		do natural_mortality_animals;
+		//write "ANIMAUX : " + wild_animals;
 	}
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -206,6 +218,7 @@ species agricultural parent:bloc{
 	    	ask agri_producer{ // prepare new tick on producer side
 	    		do reset_tick_counters;
 	    	}
+	    	
     	}
 	}
 	
@@ -279,6 +292,27 @@ species agricultural parent:bloc{
 		stock[p] <- updated_stock;
 	}
 	
+	action reproduce_animals {
+	    loop a over: wild_animals.keys {
+	    	/*if(wild_animals[a]["quantity"] < 1000){
+			    wild_animals[a]["quantity"] <- wild_animals[a]["quantity"] + 1000;
+			}*/
+	        if wild_animals[a]["quantity"] > 0 {
+	            float newborns <- round(wild_animals[a]["quantity"] * wild_animals[a]["reproduction_rate"]);
+	            wild_animals[a]["quantity"] <- wild_animals[a]["quantity"] + newborns;
+	        }
+	    }
+	}
+	
+	action natural_mortality_animals {
+	    loop a over: wild_animals.keys {
+	        if wild_animals[a]["quantity"] > 0 {
+	            float deaths <- round(wild_animals[a]["quantity"] * wild_animals[a]["mortality_rate"]);
+	            wild_animals[a]["quantity"] <- max(0, wild_animals[a]["quantity"] - deaths);
+	        }
+	    }
+	}
+	
 	
 	/**
 	 * We define here the production agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
@@ -326,6 +360,7 @@ species agricultural parent:bloc{
 			
 			// reset des animaux chassés
 			hunted_animals <- 0;
+			hunted_animals_kg <- 0.0;
 		}
 		
 		
@@ -346,10 +381,14 @@ species agricultural parent:bloc{
 					
 					
 					if(c = "kg_meat"){ // pas de ressources utilisées dans le cas de la chasse ?
-						do hunting;
-						float kg_hunted_animals <- hunted_animals * weight_wilds_animals;
-						tick_production[c] <- tick_production[c] + kg_hunted_animals;
-						augmented_demand <- augmented_demand - kg_hunted_animals;
+						do hunting(augmented_demand); // ou juste to_produce et surproduction que pour l'élevage?
+						tick_production[c] <- tick_production[c] + hunted_animals_kg;
+						augmented_demand <- augmented_demand - hunted_animals_kg;
+						write "Kg ciande chassée : " + hunted_animals_kg;
+						write "Kg Viande à produire : " + augmented_demand;
+						//float kg_hunted_animals <- hunted_animals * weight_wilds_animals;
+						//tick_production[c] <- tick_production[c] + kg_hunted_animals;
+						//augmented_demand <- augmented_demand - kg_hunted_animals;
 					}
 					
 					loop u over: production_inputs_A{
@@ -409,9 +448,31 @@ species agricultural parent:bloc{
 			return ok;
 		}
 		
-		action hunting{
+		action hunting(float demand){
+			float kg_animal_to_hunt <- demand * hunting_over_farm;
+			write "Kg viande À chasser : " + kg_animal_to_hunt;
+			float total_hunted_kg <- 0.0;
 			// s'il y a assez d'animaux pour la chasse on l'effectue, sinon pas de chasse
-			if(wilds_animals > hunting_proportion){
+			
+			loop a over:wild_animals.keys{
+				if(total_hunted_kg >= kg_animal_to_hunt){
+					break;
+				}
+				
+				map<string, float> data <- wild_animals[a];
+				float max_huntable_kg <- data["quantity"] * data["kg_per_animal"] * data["hunting_rate"];
+				float to_hunt_kg <- min(kg_animal_to_hunt - total_hunted_kg, max_huntable_kg);
+				
+				if to_hunt_kg > 0{
+					data["quantity"] <- max(0, data["quantity"] - round(to_hunt_kg / data["kg_per_animal"])); // ou ne pas mettre le max
+					total_hunted_kg <- total_hunted_kg + to_hunt_kg;
+					hunted_animals <- hunted_animals + round(to_hunt_kg / data["kg_per_animal"]);
+					//write "DATA QUANTITY : " + data["quantity"];
+					//write "WILD ANIMAL QUANTITY : " + wild_animals[a]["quantity"];
+				}
+			}
+			hunted_animals_kg <- total_hunted_kg;
+			/*if(wilds_animals > hunting_proportion){
 				// calcul des animaux sauvages restants et ceux chassés
 				wilds_animals <- wilds_animals - hunting_proportion;
 				hunted_animals <- hunting_proportion;
@@ -419,7 +480,7 @@ species agricultural parent:bloc{
 			
 			// calcul de la reproduction des animaux sauvages
 			//wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
-			wilds_animals <- int(wilds_animals * (1 + animals_reproduction));
+			wilds_animals <- int(wilds_animals * (1 + animals_reproduction));*/
 		}	
 		
 		
@@ -477,6 +538,7 @@ experiment run_agricultural type: gui {
 	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
 	parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
 	parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
+	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
 	
 	output {
 		display Agricultural_information {
@@ -511,7 +573,9 @@ experiment run_agricultural type: gui {
 			    }
 			}
 			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1} {
-			    data "wilds_animals" value: wilds_animals;
+				loop a over:wild_animals.keys{
+					data a value: wild_animals[a]["quantity"];
+			    }
 			}
 	    }
 	}
