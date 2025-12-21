@@ -17,7 +17,7 @@ global{
 	/* Setup */
 	list<string> production_inputs_T <- ["kWh energy"];
 	list<string> production_outputs_T <- [
-		"km/person_scale_1",
+		"km/person_scale_1", // km/person is not used by other blocs for now, we use them internally (see individual_consumption_T)
 		"km/person_scale_2",
 		"km/person_scale_3",
 		"km/kg_scale_1",
@@ -99,12 +99,12 @@ global{
 	
 	/* Consumption data */
 	map<string, float> individual_consumption_T <- [
-	"km/person_scale_1"::1636.0,
-	"km/person_scale_2"::1520.0,
-	"km/person_scale_3"::47.2,
-	"km/kg_scale_1"::0,
-	"km/kg_scale_2"::0,
-	"km/kg_scale_3"::0
+		"km/person_scale_1"::1636.0,
+		"km/person_scale_2"::1520.0,
+		"km/person_scale_3"::47.2
+		//"km/kg_scale_1"::0, none since it's the population consumption
+		//"km/kg_scale_2"::0,
+		//"km/kg_scale_3"::0
 	]; // monthly consumption per individual of the population.
 	
 	/* Energy required for vehicles creation in kWh */
@@ -534,14 +534,14 @@ experiment run_transport type: gui {
 		display Transport_information refresh:every(graph_every_X_ticks #cycles){
 			
 			// ROW 1
-			chart "Population direct consumption (Demand)" type: series size: {0.5,0.5} position: {-0.5, -0.25} y_log_scale:true {
-			    loop c over: production_outputs_T {
+			chart "Population direct consumption (km/person)" type: series size: {0.5,0.5} position: {-0.5, -0.25} y_log_scale: true {
+			    loop c over: individual_consumption_T.keys {
 			    	// show km per scale
 			    	data c value: tick_pop_consumption_T[c]; 
 			    }
 			}
-			chart "Total production (Service realized)" type: series size: {0.5,0.5} position: {0, -0.25} y_log_scale:true {
-			    loop c over: production_outputs_T {
+			chart "Production (km/kg)" type: series size: {0.5,0.5} position: {0, -0.25} {
+			    loop c over: (production_outputs_T - individual_consumption_T.keys) {
 			    	data c value: tick_production_T[c];
 			    }
 			}
