@@ -12,6 +12,7 @@ import "blocs/Agricultural.gaml"
 import "blocs/Energy.gaml"
 import "blocs/Transport.gaml"
 import "blocs/Ecosystem.gaml"
+import "blocs/Urbanism.gaml"
 
 /**
  * This is the main section of the simulation. Here, we instanciate our blocs, and launch the simulation through the coordinator.
@@ -47,6 +48,7 @@ global{
 		create energy number:1;
 		create transport number:1;
 		create ecosystem number:1;
+		create urbanism number:1;
 		create coordinator number:1; // instanciate the coordinator
 		// start simulation :
 		ask coordinator{ 
