@@ -119,7 +119,7 @@ species residents parent:bloc{
 			do increment_age;
 			do update_population;
 		}
-		write "tick" + last_consumed;
+		// write "tick" + last_consumed;
 	}
 	
 	list<string> get_input_resources_labels{ 
@@ -199,10 +199,12 @@ species residents parent:bloc{
 		births <- births + new_births;
 	}
 
+	/* 
 	action send_production_agricultural(map<string, float> p){
 		kg_meat <- p["kg_meat"];
 		kg_vegetables <- p["kg_vegetables"];
 	}
+	*/
 	
 
 	/* get average calorie intake based on kg_meat + kg_vegetables inputs */
@@ -345,7 +347,7 @@ species residents parent:bloc{
 					tick_resources_used[r] <- 0.0;
 				}
 				tick_resources_used[r] <- tick_resources_used[r] + qty;
-				write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
+				//write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
 			}
 			return ok;
 			

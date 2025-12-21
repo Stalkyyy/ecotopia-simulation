@@ -20,58 +20,62 @@ global{
 	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land", "km/kg_scale_2"];
 	list<string> production_emissions_A <- ["gCO2e emissions"];
 	
-	// paramètre pour le transport 
+	/* Parameter for transport */
 	float distance <- 50.0;
+	
+	/* Parameter to simulate production without pesticide */
+	float without_pesticide_vegetables <- 74/41;
+	float without_pesticide_cotton <- 84/38;
 	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
 		// pourquoi j'ai besoin de gaz à effets de serre ?
-		"kg_meat"::["L water"::15500.0, "kWh energy"::8.0, "m² land"::27.0, "km/kg_scale_2"::distance],
-		"kg_vegetables"::["L water"::500.0, "kWh energy"::0.3, "m² land"::0.57, "km/kg_scale_2"::distance],
-		"kg_cotton"::["L water"::5200.0, "kWh energy"::0.2, "m² land"::11.0, "km/kg_scale_2"::distance]
+		"kg_meat"::["L water"::8576.0, "kWh energy"::10.0, "m² land"::12.8, "km/kg_scale_2"::distance],
+		"kg_vegetables"::["L water"::425.0*without_pesticide_vegetables, "kWh energy"::0.5*without_pesticide_vegetables, "m² land"::0.47*without_pesticide_vegetables, "km/kg_scale_2"::distance],
+		"kg_cotton"::["L water"::10000.0*without_pesticide_cotton, "kWh energy"::0.2*without_pesticide_cotton, "m² land"::13.3*without_pesticide_cotton, "km/kg_scale_2"::distance]
 	];
 	map<string, map<string, float>> production_output_emissions_A <- [
-		"kg_meat"::["gCO2e emissions"::27.0],
-		"kg_vegetables"::["gCO2e emissions"::0.4],
-		"kg_cotton"::["gCO2e emissions"::4.7]
+		"kg_meat"::["gCO2e emissions"::12.6],
+		"kg_vegetables"::["gCO2e emissions"::0.5],
+		"kg_cotton"::["gCO2e emissions"::8]
 	];
 	
-	/* Initialisation des surfaces de production */
+	/* Initialization of production areas */
 	map<string, float> surface_production_A <- [
 		"kg_meat"::0.0,
 		"kg_vegetables"::0.0,
 		"kg_cotton"::0.0
 	];
 	
-	/* Facteur de surpoduction pour prévoir du stock */
+	/* Overproduction factor for stock forecasting */
 	float overproduction_factor <- 0.05;
 	
-	/* Porcetage d'utilisation du stock */
+	/* Percentage of stock utilization */
 	float stock_use_rate <- 1.0;
 	
-	/* Initialisation du stock des productions agricoles */
+	/* Initialization of the stock of agricultural production */
 	map<string, list<map<string, float>>> stock <- [
 		"kg_meat"::[],
 		"kg_vegetables"::[],
 		"kg_cotton"::[]
 	];
 	
-	/* Durée de vie des productions agricoles (en nombre de ticks) */
+	/* Lifespan of agricultural products (in number of ticks) */
 	map<string, int> lifetime_productions <- [
 		"kg_meat"::6,
 		"kg_vegetables"::8,
 		"kg_cotton"::12
 	];
 	
-	/* Stock total par ressource affiché sur le graphe de l'expérience */
+	/* Total stock per resource displayed on the experience graph */
 	map<string, float> stock_display <- [];
 	
-	// nb_humains_divises
+	/* Number of humans coef */
 	int nb_humans <- 6700;
 	
 	/* Consumption data */
 	float vegetarian_proportion <- 0.022;
-	map<string, float> indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)];
+	map<string, float> indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
 	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
@@ -79,15 +83,12 @@ global{
 	map<string, float> tick_resources_used_A <- [];
 	map<string, float> tick_emissions_A <- [];
 	
-	// paramètres pour la chasse (sangliers)
-	int wilds_animals <- 2000000; // près de 2 millions de sangliers en France
-	int hunting_proportion <- 75000; // près de 900 000 sangliers chassés / 12 mois 
-    //float animals_reproduction <- 0.15; // ~ 1 à 2 portées par an donc 1/6 
-    //int nb_per_litters <- 5; // 5 à 6 marcassins par portées
-    float weight_wilds_animals <- 90.0; // 100 à 110 kg par mâles, 70 à 80 kg par femelles
-    
-    float animals_reproduction <- hunting_proportion / wilds_animals;
+	/* Parameters for hunting */
+	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
+	float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
+	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
+    float hunted_animals_kg <- 0.0;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -152,7 +153,7 @@ species agricultural parent:bloc{
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
 	    	
-	    	// vieillissement du stock
+	    	// aging of stock
 	    	loop p over: production_outputs_A{
 	    		if not empty(stock[p]){
 	    			list<map<string, float>> aged_stock <- [];
@@ -169,7 +170,7 @@ species agricultural parent:bloc{
 	    		}
 	    	}
 	    	
-	    	// calcule du surplus de production à stocker + consommation du stock
+	    	// calculation of surplus production to be stored + consumption of stock
 	    	loop p over: production_outputs_A{
 	    		float demand <- tick_pop_consumption_A[p];
 	    		float from_stock <- get_stock_to_consume(p, demand);
@@ -183,21 +184,23 @@ species agricultural parent:bloc{
 	    		}
 	    	}
 	    	
-	    	// on met à jour le stock affiché
+	    	// we update the displayed stock
 	    	loop c over: production_outputs_A {
 			    stock_display[c] <- sum(stock[c] collect each["quantity"]);
 			}
 	    	
-	    	// envoi les quantités de viande et légumes produites à population
+	    	// sending the quantities of meat and vegetables produced (excluding surplus) to the population
 	    	map<string,float> food_production <- [];
 	    	loop fp over: tick_pop_consumption_A.keys{
 	    		if(fp != "kg_cotton"){
 	    			food_production[fp] <- tick_pop_consumption_A[fp];
 	    		}
 	    	}
+			/*
 	    	ask one_of(residents){
 	    		do send_production_agricultural(food_production);
-	    	}	    	
+	    	}
+			*/	    	
 	    	
 	    	ask agri_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -206,12 +209,13 @@ species agricultural parent:bloc{
 	    	ask agri_producer{ // prepare new tick on producer side
 	    		do reset_tick_counters;
 	    	}
+	    	
     	}
 	}
 	
 	action population_activity(list<human> pop) {
-		// on fait évoluer les besoins selon le taux de végétariens
-		indivudual_consumption_A <- ["kg_meat"::7*(1-vegetarian_proportion), "kg_vegetables"::10*(1+vegetarian_proportion)];
+		// to vary the probability of vegetarians
+		indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
 		
     	ask pop{ // execute the consumption behavior of the population
     		ask myself.agri_consumer{
@@ -240,8 +244,8 @@ species agricultural parent:bloc{
 		float stock_to_use <- 0.0;
 		float desired_from_stock <- demand * stock_use_rate;
 		
-		// on trie le stock en fonction de l'âge (décroissant) des ressources por consommer les plus vieilles d'abord
-		// fonctionnement FIFO
+		// We sort the stock according to the age (descending) of the resources to consume the oldest ones first
+		// FIFO operation
 		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
 		
 		loop lot over:sorted_stock{
@@ -259,7 +263,7 @@ species agricultural parent:bloc{
 	action consume_stock(string p, float demand){
 		float stock_to_use <- demand;
 		
-		// tri du stock en fonction de l'âge (décroissant) des ressources (FIFO)
+		// sorting the stock according to the age (descending) of the resources (FIFO)
 		list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
 		
 		list<map<string, float>> updated_stock <- [];
@@ -324,8 +328,9 @@ species agricultural parent:bloc{
 				tick_emissions[e] <- 0.0;
 			}
 			
-			// reset des animaux chassés
+			// reset of hunted animals
 			hunted_animals <- 0;
+			hunted_animals_kg <- 0.0;
 		}
 		
 		
@@ -334,9 +339,7 @@ species agricultural parent:bloc{
 			bool ok <- true;
 			loop c over: demand.keys{
 				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
-					//production_output_inputs_A[c]["km/kg_scale_2"] <- distance * demand[c];
 					
-					// on multiplie la demande par 6800 car on est à 10000 personnes sauf pour le coton
 					float from_stock <- 0.0;
 					ask one_of(agricultural){
 						from_stock <- get_stock_to_consume(c, demand[c]);
@@ -345,11 +348,10 @@ species agricultural parent:bloc{
 					float augmented_demand <- to_produce * (1 + overproduction_factor);
 					
 					
-					if(c = "kg_meat"){ // pas de ressources utilisées dans le cas de la chasse ?
-						do hunting;
-						float kg_hunted_animals <- hunted_animals * weight_wilds_animals;
-						tick_production[c] <- tick_production[c] + kg_hunted_animals;
-						augmented_demand <- augmented_demand - kg_hunted_animals;
+					if(c = "kg_meat"){
+						do hunting(augmented_demand); 
+						tick_production[c] <- tick_production[c] + hunted_animals_kg;
+						augmented_demand <- augmented_demand - hunted_animals_kg;
 					}
 					
 					loop u over: production_inputs_A{
@@ -358,7 +360,7 @@ species agricultural parent:bloc{
 						
 						if(external_producers.keys contains u){ // if there is a known external producer for this product/good
 						
-							// on envoie spécifiquement JUSTE la demande
+							// we specifically send JUST the request
 							if(u = "km/kg_scale_2"){
 								quantity_needed <- production_output_inputs_A[c][u] * demand[c];
 																
@@ -371,20 +373,16 @@ species agricultural parent:bloc{
 								continue;
 							}
 							
-							// mais on produit la quantité nécessaire ET supplémentaire
 							quantity_needed <- production_output_inputs_A[c][u] * augmented_demand;
 														
-							// allouer seulement l'espace nécessaire sans l'espace déjà à nous
+							// allocate only the necessary space without the space already belonging to us
 							if(u = "m² land"){
-								// dans tous cas on a au minimum la surface déjà allouée
 								tick_resources_used[u] <- tick_resources_used[u] + surface_production_A[c];
 								
 								if(quantity_needed > surface_production_A[c]){
 									quantity_needed <- quantity_needed - surface_production_A[c];
-									
-									// ici on part du principe que la surface est toujours donnée (à voir comment modifier ça plus tard)
 									surface_production_A[c] <- surface_production_A[c] + quantity_needed;
-								} else { // sinon on en a assez et on ne fait aucune demande
+								} else {
 									continue;
 								}
 							}
@@ -409,20 +407,12 @@ species agricultural parent:bloc{
 			return ok;
 		}
 		
-		action hunting{
-			// s'il y a assez d'animaux pour la chasse on l'effectue, sinon pas de chasse
-			if(wilds_animals > hunting_proportion){
-				// calcul des animaux sauvages restants et ceux chassés
-				wilds_animals <- wilds_animals - hunting_proportion;
-				hunted_animals <- hunting_proportion;
-			}
-			
-			// calcul de la reproduction des animaux sauvages
-			//wilds_animals <- wilds_animals + int((wilds_animals/3) * animals_reproduction * nb_per_litters); // wilds_animals / 3 pour symboliser les femelles
-			wilds_animals <- int(wilds_animals * (1 + animals_reproduction));
-		}	
-		
-		
+		action hunting(float demand){
+			float kg_animal_to_hunt <- demand * hunting_over_farm;
+			float max_kg_hunted <- hunted_per_month * kg_per_animal;
+			float hunted_kg <- min(kg_animal_to_hunt, max_kg_hunted);
+			hunted_animals_kg <- hunted_kg;
+		}		
 	}
 	
 	/**
@@ -456,10 +446,6 @@ species agricultural parent:bloc{
 		    		consumed[c] <- consumed[c]+ (indivudual_consumption_A[c] * nb_humans);
 		    	}
 		    }
-		    // comme on ne considère pas la pénurie en macro, on peut mettre ici ce que chaque humain consomme
-		    // en micro, faudra le mettre dans population activity avec la fonction produce qui renverra la vraie quantité
-		    // h.vegetables <- consumed["kg_vegetables"];
-		    // h.meat <- consumed["kg_meat"];
 		}
 	}
 }
@@ -477,6 +463,7 @@ experiment run_agricultural type: gui {
 	parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
 	parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
 	parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
+	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
 	
 	output {
 		display Agricultural_information {
@@ -490,7 +477,7 @@ experiment run_agricultural type: gui {
 			    	data c value: tick_production_A[c];
 			    }
 			}
-			chart "Resources usage" type: series size: {0.5,0.5} position: {0, 0.5} {
+			chart "Resources usage" type: series size: {0.5,0.5} position: {0, 0.5}  y_log_scale:true{
 			    loop r over: production_inputs_A{
 			    	data r value: tick_resources_used_A[r];
 			    }
@@ -505,13 +492,13 @@ experiment run_agricultural type: gui {
 			    	data c value: stock_display[c];
 			    }
 			}
-			chart "Surface production" type: series size: {0.5,0.5} position: {1, 0.5} {
+			chart "Surface production" type: series size: {0.5,0.5} position: {1, 0.5}  y_log_scale:true{
 			    loop s over: production_outputs_A{
 			    	data s value: surface_production_A[s];
 			    }
 			}
-			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1} {
-			    data "wilds_animals" value: wilds_animals;
+			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1}{
+				data "hunted_kg" value:hunted_animals_kg;
 			}
 	    }
 	}
