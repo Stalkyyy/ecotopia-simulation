@@ -25,7 +25,8 @@ global{
 	
 	float target_occupancy_rate <- 0.95; // aim for ~95% occupancy
 	int max_units_per_tick <- 20; // build rate cap
-	float constructible_surface_total <- 100000.0; // m2 available to build
+	float constructible_surface_total <- 100000.0; // fallback surface cap (replaced by ecosystem land_stock when available)
+	float available_land_from_ecosystem <- constructible_surface_total; // synced each tick from ecosystem
 	
 	/* State */
 	int population_count <- 0; // last observed population size (for charts)
@@ -68,6 +69,7 @@ species urbanism parent: bloc{
 	action tick(list<human> pop){
 		do reset_tick_counters;
 		ask producer { do reset_tick_counters; }
+		do sync_available_land;
 		
 		int occupants <- length(pop);
 		population_count <- occupants;
@@ -112,6 +114,18 @@ species urbanism parent: bloc{
 	bool surface_room(int planned_units){
 		float planned_surface <- planned_units * (surface_per_unit["wood"] + surface_per_unit["modular"]) / 2.0; // rough avg
 		return (surface_used + planned_surface) <= constructible_surface_total;
+	}
+	
+	// Pull current land availability from ecosystem (preferred) or fall back to local cap
+	action sync_available_land{
+		float eco_land <- constructible_surface_total;
+		if(length(ecosystem) > 0){
+			ask one_of(ecosystem){
+				eco_land <- land_stock;
+			}
+		}
+		available_land_from_ecosystem <- eco_land;
+		constructible_surface_total <- eco_land;
 	}
 	
 	action add_units(int wood_units, int modular_units){

@@ -29,7 +29,9 @@ global{
 	/* Parameters */ 
 	float coeff_birth <- 1.0; // a parameter that can be used to increase or decrease the birth probability
 	float coeff_death <- 1.0; // a parameter that can be used to increase or decrease the death probability
-	int nb_init_individuals <- 1000; // pop size
+	int nb_init_individuals <- 10000; // pop size
+	int pop_per_ind <- 6700;
+	int total_pop <- nb_init_individuals * pop_per_ind;
 	
 	/* Counters & Stats */
 	int nb_inds -> {length(individual)};
@@ -40,7 +42,7 @@ global{
 	float kg_meat <- 0.0;
 	float kg_vegetables <- 0.0;
 	float L_water <- 0.0;
-	int available_housing <- 0;
+	float total_housing_capacity <- 0.0;
 
 	/* Variables for mortality by calorie intake */
 	float calorie_intake <- 0.0;
@@ -53,7 +55,7 @@ global{
 	/* Variables for mortality and natality by available housing */
 	int housing_deficit <- 0;
 	float p_death_housing <- 0.0;
-	float p_birth_housing <- 0.0;
+	float p_birth_coef_housing <- 0.0;
 	
 	init{  
 		// a security added to avoid launching an experiment without the other blocs
@@ -86,9 +88,13 @@ species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- false; // true to activate the demography (births, deaths), else false.
 	
+	residents_producer producer <- nil;
+	
 	/* setup the resident agent : initialize the population */
 	action setup{
 		do init_population;
+		create residents_producer number:1 returns:producers;
+		producer <- first(producers);
 	}
 	
 	/* updates the population every tick */
@@ -98,19 +104,20 @@ species residents parent:bloc{
 			do update_births;
 			do update_deaths;
 			do increment_age;
+			do update_population;
 		}
 	}
 	
 	list<string> get_input_resources_labels{ 
-		return ["kg_meat", "kg_vegetables", "L_water", "available_housing"];
+		return ["kg_meat", "kg_vegetables", "L water", "total_housing_capacity"];
 	}
 	
 	list<string> get_output_resources_labels{
-		return ["nb_individuals", "food_demand", "transport_demand", "housing_demand"];
+		return ["total_pop"];
 	}
 	
 	production_agent get_producer{
-		return nil; // no producer for demography component (function declared only to respect bloc API)
+		return producer; // no producer for demography component (function declared only to respect bloc API)
 	}
 	
 	action collect_last_tick_data{ // update stats & measures
@@ -159,19 +166,23 @@ species residents parent:bloc{
 		L_water <- p["L_water"];
 	}
 
-	action send_production_housing(map<string, int> p){
-		available_housing <- p["available_housing"];
+	action send_production_housing(map<string, float> p){
+		total_housing_capacity <- p["total_capacity"];
 	}
 	
 
 	/* get average calorie intake based on kg_meat + kg_vegetables inputs */
 	action get_calorie_intake{
-		int total_pop <- nb_inds;
+		//write "[DEMOGRAPHY] kg meat: " + kg_meat;
+		//write "[DEMOGRAPHY] kg veggies: " + kg_vegetables;
+
 		float meat_per_capita <- (kg_meat / total_pop);
 		float veg_per_capita <- (kg_vegetables / total_pop);
 		// 2500 kcal per kg of meat, 
 		// 500 kcal per kg of vegetables
-		calorie_intake <- (meat_per_capita * 2500) + (veg_per_capita * 500);
+		// average per day
+		calorie_intake <- ( (meat_per_capita * 2500) + (veg_per_capita * 500) ) / 30 ;
+		//write "[DEMOGRAPHY]"+ "average daily calorie_intake of a single person in a " + (total_pop / 1000000) + " million pop=" + calorie_intake;
 	}
 
 	/* calculate mortality rate by average calorie intake */
@@ -185,7 +196,9 @@ species residents parent:bloc{
 
 	/* get average water intake based on L_water input */
 	action get_water_intake{
-		L_water_intake <- L_water / nb_inds;
+		L_water_intake <- L_water / total_pop;
+		// average per day
+		L_water_intake <- L_water_intake / 30; 
 	}
 
 	/* calculate mortality rate by average water intake */
@@ -198,10 +211,7 @@ species residents parent:bloc{
 
 	/* calculate housing deficit */
 	action get_housing_deficit{
-		housing_deficit <- nb_inds - available_housing;
-		if(housing_deficit < 0){
-			housing_deficit <- 0;
-		}
+		housing_deficit <- total_pop - total_housing_capacity;
 	}
 
 	/* calculate mortality rate by housing deficit */
@@ -210,13 +220,14 @@ species residents parent:bloc{
 		p_death_housing <- -a * housing_deficit;
 	}
 
-	/* calculate birth rate by housing deficit */
+	/* calculate birth rate coefficient by housing deficit */
 	action natality_by_housing{
-		float a <- 0.00001;
-		p_birth_housing <- -a * housing_deficit;
+		float a <- -10.0;
+		float b <- 3.0;
+		float c <- -b/(2*a); //between -0.2 and 0.2
+		p_birth_coef_housing <- (1/(b*(1+exp(a*housing_deficit)))) - c;
+		
 	}
-
-	
 	/* apply deaths*/
 	action update_deaths{
 		ask individual{
@@ -240,6 +251,47 @@ species residents parent:bloc{
 			else{
 				ticks_before_birthday <- ticks_before_birthday -1;
 			}
+		}
+	}
+	
+	action update_population{
+		total_pop <- nb_inds * pop_per_ind;
+		//write "" + total_pop;
+	}
+	
+	
+	
+	species residents_producer parent:production_agent {
+		map<string, bloc> external_producers;
+				
+		map<string, float> tick_resources_used <- [];
+		map<string, float> tick_production <- [];
+		map<string, float> tick_emissions <- [];
+		
+		map<string, float> get_tick_inputs_used{		
+			return tick_resources_used;
+		}
+		map<string, float> get_tick_outputs_produced{
+			return tick_production;
+		}
+		map<string, float> get_tick_emissions{
+			return tick_emissions;
+		}
+
+		action reset_tick_counters{
+
+		}
+		
+		
+		/**
+		 * Orchestrate national energy production across all sources according to energy mix ratios
+		 */
+		bool produce(map<string, float> demand) {
+			return true;
+		}
+		
+		action set_supplier(string product, bloc bloc_agent){
+			external_producers[product] <- bloc_agent;
 		}
 	}
 
@@ -310,7 +362,7 @@ species individual parent:human{
 			do get_housing_deficit;
 			do natality_by_housing;
 		}
-		p_birth <- p_birth + p_birth_housing;
+		p_birth <- p_birth * p_birth_coef_housing;
 
 		return p_birth * coeff_birth;
 	}
