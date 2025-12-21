@@ -20,9 +20,9 @@ global{
 	map<string, float> surface_per_unit <- ["wood"::80.0, "modular"::60.0]; // m2 per unit
 	
 	// Resource needs per unit (defaults, to be refined with data)
-	map<string, float> resource_per_unit_wood <- ["kg wood"::24000.0, "kWh energy"::500.0]; // assume ~800 kg/m3 -> 30 m3 -> 24 000 kg
-	map<string, float> resource_per_unit_modular <- ["kg_cotton"::30000.0, "kWh energy"::400.0];
-	map<string, float> energy_use_per_unit <- ["wood"::300.0, "modular"::20.0]; // monthly kWh per unit (wood higher, modular low)
+	map<string, float> resource_per_unit_wood <- ["kg wood"::24000.0, "kWh energy"::7000.0]; // assume ~800 kg/m3 -> 30 m3 -> 24 000 kg
+	map<string, float> resource_per_unit_modular <- ["kg_cotton"::20000.0, "kWh energy"::8000.0];
+	map<string, float> energy_use_per_unit <- ["wood"::375.0, "modular"::20.0]; // monthly kWh per unit (wood higher, modular low)
 	
 	float target_occupancy_rate <- 0.95; // aim for ~95% occupancy
 	int max_units_per_tick <- 5; // build rate cap (scaled to represented population)
