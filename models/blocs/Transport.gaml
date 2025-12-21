@@ -514,50 +514,6 @@ species transport parent:bloc{
  */
 experiment run_transport type: gui {
 	int graph_every_X_ticks <- 1;
-	
-	bool save_to_csv <- false;
-	
-	reflex save_results when: save_to_csv {
-		ask simulation {
-			transport t_agent <- first(transport);
-			string csv_path <- "transport_data.csv";
-			if (cycle = 0) {
-				list<string> headers <- ["Cycle"];
-				loop k over: production_outputs_T { headers <+ "Demand_" + k; }
-				loop k over: production_outputs_T { headers <+ "Production_" + k; }
-				loop k over: production_inputs_T  { headers <+ "Resource_" + k; }
-				loop k over: production_emissions_T { headers <+ "Emission_" + k; }
-				loop k over: vehicles { headers <+ "Usage_" + k; }
-				loop k over: vehicles { headers <+ "Available_" + k; }
-				loop k over: vehicles { headers <+ "Created_" + k; }
-				loop k over: vehicles { headers <+ "Age_Dist_" + k; }
-				
-				save headers to: csv_path rewrite: true;
-			}
-			
-			list<string> row_values <- [string(cycle)];
-			
-			loop k over: production_outputs_T { row_values <+ string(tick_pop_consumption_T[k]); }
-			loop k over: production_outputs_T { row_values <+ string(tick_production_T[k]); }
-			loop k over: production_inputs_T  { row_values <+ string(tick_resources_used_T[k]); }
-			loop k over: production_emissions_T { row_values <+ string(tick_emissions_T[k]); }
-			loop k over: vehicles { row_values <+ string(tick_vehicle_usage_T[k]); }
-			loop k over: vehicles { row_values <+ string(tick_vehicle_available_T[k]); }
-			loop k over: vehicles { row_values <+ string(tick_vehicles_created_T[k]); }
-			
-			loop k over: vehicles {
-				if (t_agent != nil and t_agent.vehicles_age contains_key k) {
-					string age_str <- string(t_agent.vehicles_age[k]);
-					row_values <+ replace(age_str, ",", "|"); 
-				} else {
-					row_values <+ "[]";
-				}
-			}
-			
-			save row_values to: csv_path rewrite: false;
-		}
-	}
-
 	output {
 		display Transport_information refresh:every(graph_every_X_ticks #cycles){
 			
