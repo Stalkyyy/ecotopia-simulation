@@ -333,10 +333,16 @@ species transport parent:bloc{
 		// ask for energy
 		ask transport_producer{
 			float required_energy <- quantity * vehicle_creation_energy_cost[type];
-			bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
-			if (!energy_ok) {
-					write("[TRANSPORT] Tried to create " + quantity + " " + type + " vehicles, asked Energy for " + required_energy + " energy (kWh), but we got a \"False\" return");
+			// bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			// if (!energy_ok) {
+					// write("[TRANSPORT] Tried to create " + quantity + " " + type + " vehicles, asked Energy for " + required_energy + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
+			// }
+			
+			map<string, unknown> info <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			if not bool(info["ok"]) {
+				write("[TRANSPORT] Tried to create " + quantity + " " + type + " vehicles, asked Energy for " + required_energy + " energy (kWh), but we got a \"False\" return");
+				// BAD not enough energy !! or smth
 			}
 		}
 		// TODO in MICRO
@@ -357,7 +363,7 @@ species transport parent:bloc{
     	ask transport_consumer{ // produce the required quantities
     		ask transport_producer{
     			loop c over: myself.consumed.keys{
-		    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
+		    		map<string, unknown> info <- produce([c::myself.consumed[c]]); // send the demands to the producer
 		    		// note : in this example, we do not take into account the 'ok' signal.
 		    	}
 		    }
@@ -424,7 +430,7 @@ species transport parent:bloc{
 		}
 		
 		// produce ressources to answer a demand in transport 
-		bool produce(map<string,float> demand){
+		map<string, unknown> produce(map<string,float> demand){
 			bool global_success <- true;
 			
 			// Temp variable to accumulate needs of this tick
@@ -477,15 +483,24 @@ species transport parent:bloc{
 			
 			if (total_energy_needed > 0 and external_producers contains_key "kWh energy"){
 				// Here we ask Energy for electricity. I don't know if this will be how we do it in the end.
-				bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
-				if (!energy_ok) {
+				// bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
+				// if (!energy_ok) {
+				// 	 global_success <- false;
+					 // write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
+					 // BAD not enough energy !! or smth
+				// }
+				
+				map<string, unknown> info <- external_producers["kWh energy"].producer.produce(["kWh energy"::total_energy_needed]);
+				if not bool(info["ok"]) {
 					global_success <- false;
-					// write("TRANSPORT : warning, we asked the Energy bloc for " + total_energy_needed + " energy (kWh), but we got a \"False\" return");
-					// BAD not enough energy !! or smth
 				}
 			}
 			
-			return global_success;
+			map<string, unknown> prod_info <- [
+        		"ok"::global_success
+        	];
+			
+			return prod_info;
 		}
 	}
 	

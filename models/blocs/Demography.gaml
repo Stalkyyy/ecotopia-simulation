@@ -112,7 +112,7 @@ species residents parent:bloc{
 		do population_activity(pop);
 		do collect_last_tick_data;
 		//map<string, float> demand <- ["kg_meat"::10.0, "kg_vegetables"::10.0, "L water"::10.0, "total_housing_capacity"::10.0];
-		//bool ok <- producer.produce(demand);
+		//map<string, unknown> info <- producer.produce(demand);
 		if(enabled){
 			do update_births;
 			do update_deaths;
@@ -332,14 +332,19 @@ species residents parent:bloc{
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		bool produce(map<string, float> demand){
+		map<string, unknown> produce(map<string, float> demand){
 			bool ok <- true;
 			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
 			loop r over: demand.keys{
 				float qty <- demand[r];
 				if(external_producers.keys contains r){
-					bool available <- external_producers[r].producer.produce([r::qty]);
-					if(not available){
+					// bool available <- external_producers[r].producer.produce([r::qty]);
+					// if(not available){
+					// 	 ok <- false;
+					// }
+					
+					map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+					if not bool(info["ok"]) {
 						ok <- false;
 					}
 				}
@@ -349,7 +354,12 @@ species residents parent:bloc{
 				tick_resources_used[r] <- tick_resources_used[r] + qty;
 				//write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
 			}
-			return ok;
+			
+			map<string, unknown> prod_info <- [
+        		"ok"::ok
+        	];
+			
+			return prod_info;
 			
 		}
 		

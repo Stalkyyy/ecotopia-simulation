@@ -41,7 +41,7 @@ species bloc{
 species production_agent{
 	
 	/* Produce the given resources in the requested quantities. Return true in case of success. */
-	action produce(map<string, float> demand) virtual:true type:bool;
+	action produce(map<string, float> demand) virtual:true type:map<string, unknown>;
 	
 	/* Returns all the resources used for the production this tick */
 	action get_tick_inputs_used virtual:true type: map<string, float>;
