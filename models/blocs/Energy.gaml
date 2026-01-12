@@ -222,7 +222,7 @@ species energy parent:bloc {
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		bool produce(map<string, float> demand) {
+		map<string, unknown> produce(map<string, float> demand) {
 			float total_energy_demanded <- 0.0;
 			if ("kWh energy" in demand.keys) {
 				total_energy_demanded <- demand["kWh energy"];
@@ -241,13 +241,16 @@ species energy parent:bloc {
 				string source_name <- sub_producer.get_source_name();		
 				float source_energy_requested <- total_energy_demanded * mix_ratios[source_name];
 				ask sub_producer {
-					if (not produce(["kWh energy"::source_energy_requested])) {
-						ok <- false;
-					}
+					map<string, unknown> info <- produce(["kWh energy"::source_energy_requested]);
+					ok <- bool(info["ok"]);
 				}				
 			}
-									       
-			return ok;
+			
+			map<string, unknown> prod_info <- [
+            	"ok"::ok
+            ];
+							       
+			return prod_info;
 		}
 		
 		// To update the finals values to print in experiments.
@@ -370,8 +373,8 @@ species energy parent:bloc {
 			int installations_needed <- int(ceil(deficit_kwh / energy_cfg[source_name]["capacity_per_installation_kwh"]));
 			loop i from:1 to:installations_needed {
 				if ("m² land" in external_producers.keys) {
-					bool ok <- external_producers["m² land"].producer.produce(["m² land"::energy_cfg[source_name]["land_per_installation_m2"]]);
-					if (ok) {
+					map<string, unknown> info <- external_producers["m² land"].producer.produce(["m² land"::energy_cfg[source_name]["land_per_installation_m2"]]);
+					if (bool(info["ok"])) {
 						nb_installations <- nb_installations + 1;
 						land_occupied_m2 <- land_occupied_m2 + energy_cfg[source_name]["land_per_installation_m2"];
 						remaining_capacity_kwh_this_tick <- remaining_capacity_kwh_this_tick + energy_cfg[source_name]["capacity_per_installation_kwh"];
@@ -402,7 +405,8 @@ species energy parent:bloc {
 			float water_asked_per_loop <- water_needed * 0.10; // Every 10%
 			if (water_to_ask > 0 and "L water" in external_producers.keys){
 				loop while: water_to_ask > 0 {
-					bool water_ok <- external_producers["L water"].producer.produce(["L water"::water_asked_per_loop]);
+					map<string, unknown> info <- external_producers["L water"].producer.produce(["L water"::water_asked_per_loop]);
+					bool water_ok <- bool(info["ok"]);
 					if (water_ok) {
 						water_to_ask <- water_to_ask - water_asked_per_loop;
 					} else {
@@ -431,17 +435,22 @@ species energy parent:bloc {
 		/**
 		 * Execute energy production for this source to meet a specified demand. 
 		 */
-		bool produce(map<string, float> demand) {
+		map<string, unknown> produce(map<string, float> demand) {
 			if("kWh energy" in demand.keys) {
 				float req <- demand["kWh energy"];
 				if (req <= 0) {
-					return true;
+					return ["ok" :: true];
 				}
 				
 				map<string,float> res <- allocate_resources(req);
-				return res["shortfall_kwh"] <= 0.0;
+				
+				map<string, unknown> prod_info <- [
+            		"ok"::res["shortfall_kwh"] <= 0.0
+            	];
+				
+				return prod_info;
 			}
-			return true;
+			return ["ok" :: true];
 		}
 	}
 	

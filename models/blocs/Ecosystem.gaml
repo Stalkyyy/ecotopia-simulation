@@ -221,8 +221,8 @@ species ecosystem parent:bloc {
         }
         
         
-        bool produce(map<string,float> demand){
-            bool all_available <- true;
+        map<string,unknown> produce(map<string,float> demand){
+            bool ok <- true;
             
             // WATER
             if("L water" in demand.keys){
@@ -231,7 +231,7 @@ species ecosystem parent:bloc {
                     water_stock_l <- water_stock_l - water_requested_l;
                     tick_production["L water"] <- tick_production["L water"] + water_requested_l;
                 } else {
-                    all_available <- false;
+                    ok <- false;
                     // tick_production["L water"] <- tick_production["L water"] + water_stock;
                     // water_stock <- 0.0;
                 }
@@ -246,7 +246,7 @@ species ecosystem parent:bloc {
                     land_stock <- land_stock - land_requested;
                     tick_production["m² land"] <- tick_production["m² land"] + land_requested;
                 } else {
-                    all_available <- false;
+                    ok <- false;
                     // tick_production["m² land"] <- tick_production["m² land"] + land_stock;
                     // land_occupied <- land_occupied + land_stock;
                     // land_stock <- 0.0;
@@ -260,13 +260,17 @@ species ecosystem parent:bloc {
                     wood_stock_kg <- wood_stock_kg - wood_requested;
                     tick_production["kg wood"] <- tick_production["kg wood"] + wood_requested;
                 } else {
-                    all_available <- false;
+                    ok <- false;
                     // tick_production["kg wood"] <- tick_production["kg wood"] + wood_stock;
                     // wood_stock <- 0.0;
                 }
             }
             
-            return all_available;
+            map<string, unknown> prod_info <- [
+            	"ok"::ok
+            ];
+            
+            return prod_info;
         }
         
         action set_supplier(string product, bloc bloc_agent){

@@ -94,7 +94,9 @@ species urbanism parent: bloc{
 			int modular_plan <- planned_units - wood_plan;
 			
 			map<string, float> demand <- compute_resource_demand(wood_plan, modular_plan);
-			bool ok <- producer.produce(demand);
+			// bool ok <- producer.produce(demand);
+			map<string, unknown> info <- producer.produce(demand);
+			bool ok <- bool(info["ok"]);
 			
 			if(ok){
 				do add_units(wood_plan, modular_plan);
@@ -121,7 +123,8 @@ species urbanism parent: bloc{
 		float total_energy_need <- base_energy_need * population_scaling_factor;
 		if(total_energy_need > 0){
 			map<string, float> energy_demand <- ["kWh energy"::total_energy_need];
-			bool energy_ok <- producer.produce(energy_demand);
+			// bool energy_ok <- producer.produce(energy_demand);
+			map<string, unknown> info <- producer.produce(energy_demand);
 		}
 	}
 	
@@ -210,13 +213,18 @@ species urban_producer parent: production_agent{
 		return tick_emissions; // placeholder
 	}
 	
-	bool produce(map<string, float> demand){
+	map<string, unknown> produce(map<string, float> demand){
 		bool ok <- true;
 		loop r over: demand.keys{
 			float qty <- demand[r];
 			if(external_producers.keys contains r){
-				bool available <- external_producers[r].producer.produce([r::qty]);
-				if(not available){
+				// bool available <- external_producers[r].producer.produce([r::qty]);
+				// if(not available){
+				//	 ok <- false;
+				// }
+				
+				map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+				if not bool(info["ok"]) {
 					ok <- false;
 				}
 			}
@@ -225,7 +233,12 @@ species urban_producer parent: production_agent{
 			}
 			tick_resources_used[r] <- tick_resources_used[r] + qty;
 		}
-		return ok;
+		
+		map<string, unknown> prod_info <- [
+    		"ok"::ok
+    	];
+		
+		return prod_info;
 	}
 }
 

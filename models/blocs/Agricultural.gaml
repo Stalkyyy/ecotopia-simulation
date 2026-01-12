@@ -225,7 +225,7 @@ species agricultural parent:bloc{
     		ask agri_producer{
     			loop c over: myself.consumed.keys{
     				if(c != "kg_cotton"){
-			    		bool ok <- produce([c::myself.consumed[c]]); // send the demands to the producer
+			    		map<string, unknown> info <- produce([c::myself.consumed[c]]); // send the demands to the producer
 			    		// note : in this example, we do not take into account the 'ok' signal.
 			    	}
 		    	}
@@ -335,7 +335,7 @@ species agricultural parent:bloc{
 		
 		
 		
-		bool produce(map<string,float> demand){
+		map<string, unknown> produce(map<string,float> demand){
 			bool ok <- true;
 			loop c over: demand.keys{
 				if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
@@ -365,8 +365,13 @@ species agricultural parent:bloc{
 								quantity_needed <- production_output_inputs_A[c][u] * demand[c];
 																
 								tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
-								bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
-								if not av{
+								// bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
+								// if not av{
+								// 	 ok <- false;
+								// }
+								
+								map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+								if not bool(info["ok"]) {
 									ok <- false;
 								}
 								
@@ -388,8 +393,13 @@ species agricultural parent:bloc{
 							}
 							
 							tick_resources_used[u] <- tick_resources_used[u] + quantity_needed; 
-							bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
-							if not av{
+							// bool av <- external_producers[u].producer.produce([u::quantity_needed]); // ask the external producer to product the required quantity
+							// if not av{
+							//	 ok <- false;
+							// }
+							
+							map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+							if not bool(info["ok"]) {
 								ok <- false;
 							}
 						}
@@ -406,7 +416,12 @@ species agricultural parent:bloc{
 				
 				}
 			}
-			return ok;
+			
+			map<string, unknown> prod_info <- [
+        		"ok"::ok
+        	];
+			
+			return prod_info;
 		}
 		
 		action hunting(float demand){
