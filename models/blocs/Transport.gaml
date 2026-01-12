@@ -37,6 +37,7 @@ global{
 			"consumption"::1, // (kWh/km)
 			"lifetime"::116, // based on average age on french roads (months
 			"emissions"::1000, // GES (g per km)
+			"creation_energy"::4596.0, // (kWh)
 			"plastic_weight"::7700, // (kg)
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
@@ -47,6 +48,7 @@ global{
 			"consumption"::15.0,
 			"lifetime"::324,
 			"emissions"::7200,
+			"creation_energy"::375000.0,
 			"plastic_weight"::146200,
 			"distance_max_per_tick"::80000
 		],
@@ -57,6 +59,7 @@ global{
 			"consumption"::0.1,
 			"lifetime"::138,
 			"emissions"::100,
+			"creation_energy"::1532.0,
 			"plastic_weight"::1600,
 			"distance_max_per_tick"::8300
 		],
@@ -67,6 +70,7 @@ global{
 			"consumption"::0.33,
 			"lifetime"::98,
 			"emissions"::500,
+			"creation_energy"::4596.0,
 			"plastic_weight"::2000,
 			"distance_max_per_tick"::5000
 		],
@@ -77,6 +81,7 @@ global{
 			"consumption"::0.001,
 			"lifetime"::84,
 			"emissions"::23,
+			"creation_energy"::6.7,
 			"plastic_weight"::20,
 			"distance_max_per_tick"::900
 		],
@@ -87,6 +92,7 @@ global{
 			"consumption"::0,
 			"lifetime"::1,
 			"emissions"::0,
+			"creation_energy"::0.0,
 			"plastic_weight":: 0,
 			"distance_max_per_tick"::90
 		]
@@ -113,16 +119,6 @@ global{
 		//"km/kg_scale_3"::0
 	]; // monthly consumption per individual of the population.
 	
-	/* Energy required for vehicles creation in kWh */
-	map<string, float> vehicle_creation_energy_cost <- [
-		"walk"::0.0,
-		"bicycle"::6.7,
-		"taxi"::1532.0,
-		"minibus"::4596.0,
-		"truck"::4596.0,
-		"train"::375000.0
-	];
-	
 	/* Counters & Stats */
 	map<string, float> tick_production_T <- [];
 	map<string, float> tick_pop_consumption_T <- [];
@@ -141,7 +137,7 @@ global{
 		}
 	}
 	
-	float kWh_per_kg_cotton <- 30000.0; // TODO
+	float kWh_per_kg_plastic <- 19.4;
 	float humans_per_agent <- 6700.0;
 }
 
@@ -338,7 +334,7 @@ species transport parent:bloc{
 		vehicles_age[type][0] <- vehicles_age[type][0] + quantity;
 		
 		float required_cotton <- quantity * vehicle_data[type]["plastic_weight"];
-		float required_energy <- quantity * vehicle_creation_energy_cost[type] + required_cotton * kWh_per_kg_cotton;
+		float required_energy <- quantity * vehicle_data[type]["creation_energy"] + required_cotton * kWh_per_kg_plastic;
 		// ask for energy
 		ask transport_producer{
 			// bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
@@ -349,9 +345,8 @@ species transport parent:bloc{
 			
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::required_cotton]);
-			if not bool(infoEner["ok"]) {
+			if not bool(infoEner["ok"]) { // This will probably never happen since they have infinite energy (!!)
 				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
-				// This will probably never happen since they have infinite energy (!!)
 			} else if not bool(infoAgri["ok"]) {
 				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
 			}
@@ -471,7 +466,7 @@ species transport parent:bloc{
 						
 						map<string, float> specs <- vehicle_data[v];
 						
-						map<string, unknown> ressources_needed;
+						map<string, unknown> ressources_needed <- [];
 						
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
 						float capacity <- max(1, gauss(specs["capacity"], specs["capacity_std"])); 
@@ -486,7 +481,7 @@ species transport parent:bloc{
 								ressources_needed <- create_new_vehicles(v, int(-number_of_vehicles_available[v]) + 1);
 							}
 						}
-						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]) + float(ressources_needed["kg_cotton"]);
+						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]) + float(ressources_needed["kWh energy"]);
 						total_cotton_needed <- total_cotton_needed + float(ressources_needed["kg_cotton"]);
 						
 						// TODO in MICRO
