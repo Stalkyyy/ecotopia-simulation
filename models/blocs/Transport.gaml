@@ -15,7 +15,7 @@ import "../API/API.gaml"
 global{
 
 	/* Setup */
-	list<string> production_inputs_T <- ["kWh energy"];
+	list<string> production_inputs_T <- ["kWh energy", "kg_cotton"];
 	list<string> production_outputs_T <- [
 		"km/person_scale_1", // km/person is not used by other blocs for now, we use them internally (see individual_consumption_T)
 		"km/person_scale_2",
@@ -37,6 +37,7 @@ global{
 			"consumption"::1, // (kWh/km)
 			"lifetime"::116, // based on average age on french roads (months
 			"emissions"::1000, // GES (g per km)
+			"plastic_weight"::7700, // (kg)
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
@@ -46,6 +47,7 @@ global{
 			"consumption"::15.0,
 			"lifetime"::324,
 			"emissions"::7200,
+			"plastic_weight"::146200,
 			"distance_max_per_tick"::80000
 		],
 		"taxi"::[
@@ -55,6 +57,7 @@ global{
 			"consumption"::0.1,
 			"lifetime"::138,
 			"emissions"::100,
+			"plastic_weight"::1600,
 			"distance_max_per_tick"::8300
 		],
 		"minibus"::[
@@ -64,6 +67,7 @@ global{
 			"consumption"::0.33,
 			"lifetime"::98,
 			"emissions"::500,
+			"plastic_weight"::2000,
 			"distance_max_per_tick"::5000
 		],
 		"bicycle"::[
@@ -73,6 +77,7 @@ global{
 			"consumption"::0.001,
 			"lifetime"::84,
 			"emissions"::23,
+			"plastic_weight"::20,
 			"distance_max_per_tick"::900
 		],
 		"walk"::[
@@ -82,6 +87,7 @@ global{
 			"consumption"::0,
 			"lifetime"::1,
 			"emissions"::0,
+			"plastic_weight":: 0,
 			"distance_max_per_tick"::90
 		]
 	];
@@ -135,6 +141,7 @@ global{
 		}
 	}
 	
+	float kWh_per_kg_cotton <- 30000.0; // TODO
 	float humans_per_agent <- 6700.0;
 }
 
@@ -317,7 +324,7 @@ species transport parent:bloc{
 	
 	// creates new vehicles, for now no resources used, just energy
 	//TODO: resources in MICRO
-	action create_new_vehicles(string type, int quantity){
+	map<string, unknown> create_new_vehicles(string type, int quantity){
 		//write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
@@ -330,25 +337,36 @@ species transport parent:bloc{
 		number_of_vehicles_available[type] <- number_of_vehicles_available[type] + quantity;
 		vehicles_age[type][0] <- vehicles_age[type][0] + quantity;
 		
+		float required_cotton <- quantity * vehicle_data[type]["plastic_weight"];
+		float required_energy <- quantity * vehicle_creation_energy_cost[type] + required_cotton * kWh_per_kg_cotton;
 		// ask for energy
 		ask transport_producer{
-			float required_energy <- quantity * vehicle_creation_energy_cost[type];
 			// bool energy_ok <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
 			// if (!energy_ok) {
 					// write("[TRANSPORT] Tried to create " + quantity + " " + type + " vehicles, asked Energy for " + required_energy + " energy (kWh), but we got a \"False\" return");
 					// BAD not enough energy !! or smth
 			// }
 			
-			map<string, unknown> info <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
-			if not bool(info["ok"]) {
-				write("[TRANSPORT] Tried to create " + quantity + " " + type + " vehicles, asked Energy for " + required_energy + " energy (kWh), but we got a \"False\" return");
-				// BAD not enough energy !! or smth
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::required_cotton]);
+			if not bool(infoEner["ok"]) {
+				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
+				// This will probably never happen since they have infinite energy (!!)
+			} else if not bool(infoAgri["ok"]) {
+				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
 			}
 		}
 		// TODO in MICRO
 		// For macro, we suppose we have enough energy
 		// tracking vehicles created
 		vehicles_created[type] <- vehicles_created[type] + quantity;
+		
+		map<string, unknown> prod_info <- [
+    		"kWh energy"::required_energy,
+    		"kg_cotton"::required_cotton
+    		// maybe also add a key for the produced cotton if we couldn't produce
+    	];
+		return prod_info;
 	}
 	
 	// calculates the consumption in transports for the population
@@ -407,7 +425,7 @@ species transport parent:bloc{
 			return tick_vehicle_usage;
 		}
 		
-		/* Defines an external producer for a resource (Energy Bloc) */
+		/* Defines an external producer for a resource (Energy / Agriculture Bloc) */
 		action set_supplier(string product, bloc bloc_agent){
 			external_producers[product] <- bloc_agent;
 		}
@@ -435,6 +453,7 @@ species transport parent:bloc{
 			
 			// Temp variable to accumulate needs of this tick
 			float total_energy_needed <- 0.0;
+			float total_cotton_needed <- 0.0;
 			
 			loop service over: demand.keys{
 				float quantity_asked <- demand[service]; // already in km*pers or km*kg
@@ -452,6 +471,8 @@ species transport parent:bloc{
 						
 						map<string, float> specs <- vehicle_data[v];
 						
+						map<string, unknown> ressources_needed;
+						
 						// (Total charge * Distance) / Avg Capacity = Cumulated vehicule distances
 						float capacity <- max(1, gauss(specs["capacity"], specs["capacity_std"])); 
 						float vehicle_km <- sub_quantity / capacity;
@@ -462,11 +483,11 @@ species transport parent:bloc{
 						number_of_vehicles_available[v] <- number_of_vehicles_available[v] - (vehicle_km / specs["distance_max_per_tick"]);
 						if (number_of_vehicles_available[v] < 0) {
 							ask transport{
-								do create_new_vehicles(v, int(-number_of_vehicles_available[v]) + 1);
+								ressources_needed <- create_new_vehicles(v, int(-number_of_vehicles_available[v]) + 1);
 							}
 						}
-						
-						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]);
+						total_energy_needed <- total_energy_needed + (vehicle_km * specs["consumption"]) + float(ressources_needed["kg_cotton"]);
+						total_cotton_needed <- total_cotton_needed + float(ressources_needed["kg_cotton"]);
 						
 						// TODO in MICRO
 						// For macro, we suppose we can do this so we emit directly
@@ -480,6 +501,7 @@ species transport parent:bloc{
 			// TODO in MICRO
 			// For macro, we suppose we can use all the energy needed
 			tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + total_energy_needed;
+			tick_resources_used["kg_cotton"] <- tick_resources_used["kg_cotton"] + total_cotton_needed;
 			
 			if (total_energy_needed > 0 and external_producers contains_key "kWh energy"){
 				// Here we ask Energy for electricity. I don't know if this will be how we do it in the end.
@@ -579,7 +601,7 @@ experiment run_transport type: gui {
 			
 			
 			// ROW 2
-			chart "Energy Used (kWh)" type: series size: {0.5,0.5} position: {-0.5, 0.25} {
+			chart "Energy and Cotton used" type: series size: {0.5,0.5} position: {-0.5, 0.25} y_log_scale: true {
 			    loop r over: production_inputs_T {
 			    	data r value: tick_resources_used_T[r] color: #red;
 			    }
