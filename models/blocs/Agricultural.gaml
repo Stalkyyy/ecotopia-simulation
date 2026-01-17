@@ -29,7 +29,6 @@ global{
 	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
-		// pourquoi j'ai besoin de gaz à effets de serre ?
 		"kg_meat"::["L water"::8576.0, "kWh energy"::10.0, "m² land"::12.8, "km/kg_scale_2"::distance],
 		"kg_vegetables"::["L water"::425.0*without_pesticide_vegetables, "kWh energy"::0.5*without_pesticide_vegetables, "m² land"::0.47*without_pesticide_vegetables, "km/kg_scale_2"::distance],
 		"kg_cotton"::["L water"::10000.0*without_pesticide_cotton, "kWh energy"::0.2*without_pesticide_cotton, "m² land"::13.3*without_pesticide_cotton, "km/kg_scale_2"::distance]
@@ -71,7 +70,7 @@ global{
 	map<string, float> stock_display <- [];
 	
 	/* Number of humans coef */
-	int nb_humans <- 6700;
+	//int nb_humans <- 6700;
 	
 	/* Consumption data */
 	//float vegetarian_proportion <- 0.022;
@@ -89,6 +88,32 @@ global{
 	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
     float hunted_animals_kg <- 0.0;
+    
+    
+    /* Parameters for fertilizer */
+    float kg_fertilizer_per_m2 <- 3.0;
+    float fertilizer_yield_increase <- 0.3;  
+    
+    float manure_produced_per_kg_meat <- 20.0; // A REVOIR (calculs)
+    //float loss_per_kg_vegetables <- 10.0; // A REVOIR (calculs) <- est ce réellement utile ? on prend les pertes dues au manque de pesticides non ?
+    float time_transform_waste_to_fertilizer <- 50.0; // A REVOIR -> chercher la donnée
+    float recycling_percentage <- 0.99;
+    float vegetables_to_fertilizer_percentage <- 0.3;
+    float manure_to_fertilizer_percentage <- 0.5;
+    
+    float production_emissions_fertilizer <- 1.2; // A REVOIR -> retrouver le lien
+    
+    /* Parameters for seasons */
+    map<string, int> production_seasons <- [
+		"spring"::1.0,
+		"summer"::0.8,
+		"autumn"::0.9,
+		"winter"::0.3
+	];
+    
+    list<string> seasons <- ["spring", "summer", "autumn", "winter"];
+    int current_season <- 0;
+    int cpt_tick <- 0;
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -404,12 +429,37 @@ species agricultural parent:bloc{
 							}
 						}
 					}
+					
+					
+					if(c="kg_vegetables"){ // A FAIRE : s'occuper du coton plus tard
+						
+						// calculating vegetable losses to make fertilizer (natural and seasonal losses)
+						float kg_losses <- float(vegetables_losses(demand[c]));
+						// calculating livestock manure
+						float kg_manure <- float(manure_production());
+						// calculating food waste PLUS TARD
+						//float kg_food_waste <- 0.0;
+						
+						
+						// transformation into fertilizer
+						float kg_fertilizer <- float(tranformation_into_fertilizer(kg_losses, kg_manure));
+						tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + (production_emissions_fertilizer * kg_fertilizer);
+						
+						// application of fertilizer 
+						float additional_production <- float(application_fertilizer(kg_fertilizer));
+													
+						// A faire : ajouter additional_production à la quantité déjà produite
+					}
+					
 	
 					loop e over: production_emissions_A{ // apply emissions
 						float quantity_emitted <- production_output_emissions_A[c][e] * augmented_demand;
 						tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
 						do send_ges_to_ecosystem(tick_emissions[e]);
 					}
+					
+					// adding of fertilizer's emissions
+					
 					tick_production[c] <- tick_production[c] + augmented_demand;
 					
 					tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + demand[c];
@@ -429,8 +479,54 @@ species agricultural parent:bloc{
 			float max_kg_hunted <- hunted_per_month * kg_per_animal;
 			float hunted_kg <- min(kg_animal_to_hunt, max_kg_hunted);
 			hunted_animals_kg <- hunted_kg;
-		}		
+		}	
+		
+		
+		action vegetables_losses(float qtte){
+			float tot_losses <- 0.0;
+			tot_losses <- tot_losses + qtte/without_pesticide_vegetables;
+			
+			cpt_tick <- cpt_tick + 1;
+			if(cpt_tick mod 3 = 0){
+				current_season <- (current_season + 1) mod 4;
+			}
+			
+			string season_name <- seasons[current_season];
+			float season_factor <- float(production_seasons[season_name]);
+			tot_losses <- tot_losses + (qtte * (1 - season_factor));
+			
+			return tot_losses * recycling_percentage;
+		}
+		
+		
+		action manure_production{
+			float kg_animals_tot <- production_output_inputs_A["kg_meat"]["m² land"] * surface_production_A["kg_meat"];
+			float manure_tot <- kg_animals_tot *  manure_produced_per_kg_meat;
+			return manure_tot * recycling_percentage; 
+		}
+		
+		
+		action tranformation_into_fertilizer(float kg_losses, float kg_manure){
+			// ajouter l'influence du temps plus tard (~4 mois pour un compost utilisable)
+			float kg_fertilizer <- 0.0;
+			kg_fertilizer <- kg_fertilizer + (kg_losses * vegetables_to_fertilizer_percentage);
+			kg_fertilizer <- kg_fertilizer + (kg_manure * manure_to_fertilizer_percentage);
+			return kg_fertilizer;
+		}
+		
+		
+		action application_fertilizer(float kg_fertilizer){
+			// faire un cas où on a plus d'engrais que de surface ? pour stocker le surplus -> peu de chance que ça arrive donc est ce réellement utile ? 
+			int nb_m2_with_fertilizer <- floor(kg_fertilizer / kg_fertilizer_per_m2);
+			float m2_per_kg_vegetables <- production_output_inputs_A["kg_vegetables"]["m² land"];
+			float kg_vegetables_with_fertilizer <- nb_m2_with_fertilizer * m2_per_kg_vegetables;
+			float additional_yield <- kg_vegetables_with_fertilizer * fertilizer_yield_increase;
+			return additional_yield;
+		}
+		
 	}
+	
+	
 	
 	/**
 	 * We define here the consumption agent of the agricultural bloc as a micro-species (equivalent of nested class in Java).
