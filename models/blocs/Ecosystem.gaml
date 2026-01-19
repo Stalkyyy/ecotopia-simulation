@@ -21,7 +21,15 @@ global {
      */
     list<string> production_inputs_E_eco <- [];  								
     list<string> production_outputs_E_eco <- ["L water", "m² land", "kg wood"];
-	list<string> production_emissions_E_eco <- [];  								
+	list<string> production_emissions_E_eco <- [];  
+	
+	
+	/*
+	 * TIME AND SEASONS
+	 */	
+	 int month <- 0;
+	 int year <- 0;
+	 string season <- "winter"; 		
     
     
     /*
@@ -33,8 +41,14 @@ global {
     float water_stock_l <- initial_water_stock_l;
     float water_max_stock_l <- initial_water_stock_l; 								
     
-    // Monthly production
-    float monthly_water_regeneration <- 1.75e13;
+    // Monthly production / Seasonal production
+    float monthly_water_regeneration <- 1.75e13;			//TODO: Look up again for this data (excluding rainfall)
+    map<string, float> rainfall_season_coeff <- [			//TODO: Look up again for the real, correct data
+    	"winter"::1.2,
+    	"spring"::1.0, 
+    	"summer"::0.6,
+    	"autumn"::1.1
+    ];
     
     
     /*
@@ -56,7 +70,7 @@ global {
     /*
      * LAND STOCK
      */
-    
+     
     float total_land_france_m2 <- 5.4394e11; 										
     float land_protected <- total_land_france_m2 * 0.28;	// 28% of the total land in m²
     float land_stock <- total_land_france_m2 - land_protected - total_forest_area_m2;	
@@ -122,6 +136,7 @@ species ecosystem parent:bloc {
     
     
     action tick(list<human> pop) {
+    	do update_time_and_season();
         do regenerate_resources();
         do absorb_ges();
         do collect_last_tick_data();
@@ -142,6 +157,30 @@ species ecosystem parent:bloc {
     action set_external_producer(string product, bloc bloc_agent){
         // Ecosystem doesn't consume from other blocs
     }
+    
+    
+    /*
+     * Update time (months and year) and season
+     */
+     action update_time_and_season{
+     	month <- (month + 1) mod 12;
+     	write("MOIS" + month);
+     	if (month = 0){
+     		year <- year + 1;
+     		write("ANNEE" + year);
+     	}
+     	
+     	if month in [11, 0, 1]{			// Dec, Jan, Feb -> Winter
+     		season <- "winter";
+     	} else if month in [2, 3, 4]{	// Mar, Apr, May -> Spring
+     		season <- "spring";
+     	} else if month in [5, 6, 7]{	// June, July, Aug -> Summer
+     		season <- "summer";
+     	} else {						// Sept, Oct, Nov -> Autumn
+     		season <- "autumn";
+     	}
+     }
+    
 
     
     /**
@@ -151,9 +190,12 @@ species ecosystem parent:bloc {
     action regenerate_resources {
     	
         // Water regeneration : constant amount per month
-        water_stock_l <- min(water_stock_l + monthly_water_regeneration, water_max_stock_l);        
+        //water_stock_l <- min(water_stock_l + monthly_water_regeneration, water_max_stock_l);  
+        float effective_water_regeneration <- monthly_water_regeneration * rainfall_season_coeff[season];
+        water_stock_l <- min(water_stock_l + effective_water_regeneration, water_max_stock_l);
         
-        // Wood regeneration : constant amount per month 
+        // Wood regeneration : constant amount per month
+        //TODO: wood regenration according seasons and precipitations
         wood_stock_kg <- min(wood_stock_kg + monthly_wood_growth_kg, wood_max_stock_kg);
         
         // Land: no regeneration (only tracking what's occupied)
@@ -318,8 +360,14 @@ species ecosystem parent:bloc {
  * Ecosystem experiments and displays
  */
 experiment run_ecosystem type: gui {
-    
+	
+	
     output {
+    	monitor "Month" value: month;
+		monitor "Year" value: year;
+		monitor "Season" value: season;
+		monitor "Water regen (L/month)" value: monthly_water_regeneration * rainfall_season_coeff[season];
+    
         display Ecosystem_information {
             
             // Water stock evolution
