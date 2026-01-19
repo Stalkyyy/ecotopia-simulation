@@ -164,10 +164,8 @@ species ecosystem parent:bloc {
      */
      action update_time_and_season{
      	month <- (month + 1) mod 12;
-     	write("MOIS" + month);
      	if (month = 0){
      		year <- year + 1;
-     		write("ANNEE" + year);
      	}
      	
      	if month in [11, 0, 1]{			// Dec, Jan, Feb -> Winter

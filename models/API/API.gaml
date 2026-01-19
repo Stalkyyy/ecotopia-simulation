@@ -200,6 +200,16 @@ species fronteers {
 	}
 }
 
+species region {
+	string type; 
+	rgb color <- #whitesmoke;
+	rgb border_color <- #black;
+	
+	aspect base {
+		draw shape color: color border: border_color;
+	}
+}
+
 species mountain {
 	string type; 
 	rgb color <- #silver;
