@@ -24,6 +24,15 @@ global{
 	map<string, float> resource_per_unit_modular <- ["kg_cotton"::20000.0, "kWh energy"::8000.0];
 	map<string, float> energy_use_per_unit <- ["wood"::375.0, "modular"::20.0]; // monthly kWh per unit (wood higher, modular low)
 	
+	// Mini-ville initialization (v1: fixed number, no creation/destruction)
+	int mini_ville_count <- 550;
+	float total_area_per_ville <- 2e6; // m2 per mini-ville (default)
+	float buildable_ratio <- 0.4;
+	float green_ratio <- 0.4;
+	float infrastructure_ratio <- 0.2;
+	float area_per_unit <- 70.0; // m2 per housing unit (avg footprint)
+	float initial_fill_ratio <- 0.2; // share of buildable area already used at init
+	
 	float target_occupancy_rate <- 0.95; // aim for ~95% occupancy
 	int max_units_per_tick <- 5; // build rate cap (scaled to represented population)
 	float constructible_surface_total <- 1e9; // fallback surface cap (replaced by ecosystem land_stock when available)
@@ -53,11 +62,26 @@ global{
 /**
  * Bloc implementation (macroscale scaffold)
  */
-species urbanism parent: bloc{
+species urbanism parent: bloc{			
 	string name <- "urbanism";
 	urban_producer producer <- nil;
 	
 	action setup{
+		// initialize mini-villes near existing cities (if any)
+		list<city> cities <- (city as list<city>);
+		int n <- min(mini_ville_count, length(cities));
+		if(n > 0){
+			loop c over: cities {
+				if(n <= 0) { break; }
+				create mini_ville number: 1 {
+                location <- c.location;
+            }
+				n <- n - 1;
+			}
+		} else {
+			create mini_ville number: mini_ville_count;
+		}
+		
 		list<urban_producer> producers <- [];
 		create urban_producer number:1 returns: producers;
 		producer <- first(producers);
@@ -174,6 +198,41 @@ species urbanism parent: bloc{
 }
 
 /**
+ * Mini-ville (v1): fixed set, aggregate land-use budgets and housing stock.
+ * No explicit building agents in this version.
+ */
+species mini_ville {
+	int wood_housing_units <- 0;
+	int modular_housing_units <- 0;
+	float housing_capacity <- 0.0;
+	float occupied_capacity <- 0.0;
+	
+	float total_area <- total_area_per_ville;
+	float buildable_area <- total_area_per_ville * buildable_ratio;
+	float green_area <- total_area_per_ville * green_ratio;
+	float infrastructure_area <- total_area_per_ville * infrastructure_ratio;
+	float used_buildable_area <- 0.0;
+	float remaining_buildable_area <- buildable_area;
+	
+	init{
+		// initialize with partial usage of buildable area
+		used_buildable_area <- buildable_area * initial_fill_ratio;
+		remaining_buildable_area <- max(0.0, buildable_area - used_buildable_area);
+		
+		int total_units <- int(floor(used_buildable_area / area_per_unit));
+		wood_housing_units <- int(floor(total_units * 0.6));
+		modular_housing_units <- total_units - wood_housing_units;
+		
+		housing_capacity <- (wood_housing_units * capacity_per_unit["wood"])
+			+ (modular_housing_units * capacity_per_unit["modular"]);
+		
+		// debug log
+		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+
+	}
+}
+
+/**
  * Production handler for the urbanism bloc.
  * Requests external resources via coordinator-wired suppliers and tracks usage.
  */
@@ -264,6 +323,9 @@ experiment run_urbanism type: gui {
 			chart "Surface saturation" type: series size: {0.5,0.5} position: {0.5, 0.5} {
 				data "surface_used (scaled)" value: surface_used_scaled color: #green;
 				data "constructible_surface" value: constructible_surface_total color: #black;
+			}
+			chart "Mini-ville overview" type: series size: {0.5,0.5} position: {0, 1.0} {
+				data "mini_ville_count" value: length(mini_ville) color: #blue;
 			}
 		}
 	}
