@@ -210,7 +210,7 @@ species transport parent:bloc{
 
 	// every tick : we collect/reset the data to display from the producer and consumer
 	// then we calculate the consumption in transports for the population (we do it in this bloc)
-	action tick(list<human> pop){
+	action tick(list<human> pop, list<mini_ville> cities){
 		do collect_last_tick_data();
 		do update_vehicle_numbers();
 		do population_activity(pop);
