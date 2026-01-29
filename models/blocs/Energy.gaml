@@ -44,10 +44,11 @@ global {
 	float solar_seasonality_amp <- 0.20;
 	float wind_seasonality_amp <- 0.10;
 	float hydro_seasonality_amp <- 0.15;
-	float nuclear_seasonality_phase <- 0.0;
-	float solar_seasonality_phase <- 0.0;
-	float wind_seasonality_phase <- 0.0;
-	float hydro_seasonality_phase <- 0.0;
+	// Phases chosen to align seasonal peak months for France (month_index: 0=Jan ... 11=Dec)
+	float nuclear_seasonality_phase <- 1.57079633; // peak Jan (winter)
+	float solar_seasonality_phase <- -1.57079633;  // peak Jul (summer)
+	float wind_seasonality_phase <- 1.57079633;    // peak Jan (winter)
+	float hydro_seasonality_phase <- -4.18879020;  // peak Dec (late autumn/early winter)
 	
 	// Climate shock: drought (affects hydro)
 	float drought_prob_monthly <- 0.005;
