@@ -20,6 +20,50 @@ global {
 	float solar_mix <- 0.25;
 	float wind_mix <- 0.15;
 	float hydro_mix <- 0.20;
+	
+	// Stochasticity and system pressure
+	bool enable_energy_stochasticity <- true;
+	float network_losses_rate <- 0.079; 		// share of production lost in transmission/distribution (mean)
+	
+	// Demand fluctuations
+	float demand_seasonality_amp <- 0.10; 	// more or less 10% seasonal swing
+	float demand_seasonality_phase <- 0.0; 	// radians
+	float demand_noise_std <- 0.05; 		// gaussian noise (fraction of demand)
+	float individual_noise_std <- 0.03; 	// per-person noise (fraction)
+	float demand_multiplier_min <- 0.70;
+	float demand_multiplier_max <- 1.30;
+	
+	// Source availability (outages + seasonality)
+	float outage_prob_monthly <- 0.01;
+	float outage_capacity_loss_min <- 0.05;
+	float outage_capacity_loss_max <- 0.30;
+	float availability_min <- 0.40;
+	float availability_max <- 1.00;
+	
+	float nuclear_seasonality_amp <- 0.02;
+	float solar_seasonality_amp <- 0.20;
+	float wind_seasonality_amp <- 0.10;
+	float hydro_seasonality_amp <- 0.15;
+	float nuclear_seasonality_phase <- 0.0;
+	float solar_seasonality_phase <- 0.0;
+	float wind_seasonality_phase <- 0.0;
+	float hydro_seasonality_phase <- 0.0;
+	
+	// Climate shock: drought (affects hydro)
+	float drought_prob_monthly <- 0.005;
+	int drought_duration_months <- 6;
+	float drought_hydro_capacity_mult <- 0.60;
+	
+	// Tick state for stochasticity
+	float current_demand_multiplier <- 1.0;
+	map<string, float> availability_factor_by_source <- [
+		"nuclear"::1.0,
+		"solar"::1.0,
+		"wind"::1.0,
+		"hydro"::1.0
+	];
+	bool drought_active <- false;
+	int drought_remaining <- 0;
 	 
 	// Config and data
 	map<string, map<string, float>> energy_cfg <- [];
@@ -30,6 +74,7 @@ global {
 	map<string, float> tick_resources_used_E <- [];
 	map<string, float> tick_emissions_E <- [];
 	map<string, float> tick_pop_consumption_E <- [];
+	map<string, float> tick_losses_E <- [];
 	 
 	// Per source tick counters
 	map<string, map<string, float>> tick_sub_production_E <- [];
@@ -65,6 +110,8 @@ global {
 		loop j from:0 to:length(headers)-1 {
 			human_cfg[headers[j]] <- float(config_matrix[j,0]);
 		}
+		
+		tick_losses_E["kWh energy"] <- 0.0;
 	}
 }
 
@@ -96,6 +143,7 @@ species energy parent:bloc {
 	}
 	
 	action tick(list<human> pop) {
+		do update_stochastic_state();
 		do collect_last_tick_data();
 		do population_activity(pop);
 	}
@@ -123,7 +171,7 @@ species energy parent:bloc {
 			tick_pop_consumption_E <- consumer.get_tick_consumption(); 		// collect consumption behaviors
 			
 			ask producer { do snapshot_sub_tick_data; }
-			tick_resources_used_E <- producer.get_tick_inputs_used(); 		// collect resources used
+	    	tick_resources_used_E <- producer.get_tick_inputs_used(); 		// collect resources used
 	    	tick_production_E <- producer.get_tick_outputs_produced(); 		// collect production
 	    	tick_emissions_E <- producer.get_tick_emissions(); 				// collect emissions	    	
 	    	
@@ -136,6 +184,58 @@ species energy parent:bloc {
 	    	}
 		}
 	}
+	
+
+	action update_stochastic_state{
+		if (!enable_energy_stochasticity) {
+			current_demand_multiplier <- 1.0;
+			loop s over: availability_factor_by_source.keys {
+				availability_factor_by_source[s] <- 1.0;
+			}
+			drought_active <- false;
+			drought_remaining <- 0;
+			return;
+		}
+		
+		int month_index <- int(cycle mod 12);
+		float season_angle <- (2.0 * 3.14159265) * (month_index / 12.0);
+		
+		float demand_season <- 1.0 + demand_seasonality_amp * sin(season_angle + demand_seasonality_phase);
+		float demand_noise <- (demand_noise_std > 0.0) ? gauss(0.0, demand_noise_std) : 0.0;
+		float demand_mult <- demand_season * (1.0 + demand_noise);
+		current_demand_multiplier <- max(demand_multiplier_min, min(demand_multiplier_max, demand_mult));
+		
+		// Update drought state
+		if (drought_remaining > 0) {
+			drought_active <- true;
+			drought_remaining <- drought_remaining - 1;
+		} else {
+			drought_active <- false;
+			if (rnd(1.0) < drought_prob_monthly) {
+				drought_active <- true;
+				drought_remaining <- max(1, drought_duration_months) - 1;
+			}
+		}
+		
+		loop s over: availability_factor_by_source.keys {
+			float season_mult <- 1.0;
+			if (s = "nuclear") { season_mult <- 1.0 + nuclear_seasonality_amp * sin(season_angle + nuclear_seasonality_phase); }
+			if (s = "solar") { season_mult <- 1.0 + solar_seasonality_amp * sin(season_angle + solar_seasonality_phase); }
+			if (s = "wind") { season_mult <- 1.0 + wind_seasonality_amp * sin(season_angle + wind_seasonality_phase); }
+			if (s = "hydro") { season_mult <- 1.0 + hydro_seasonality_amp * sin(season_angle + hydro_seasonality_phase); }
+			
+			float outage_loss <- 0.0;
+			if (rnd(1.0) < outage_prob_monthly) {
+				outage_loss <- outage_capacity_loss_min + rnd(outage_capacity_loss_max - outage_capacity_loss_min);
+			}
+			
+			float shock_mult <- (s = "hydro" and drought_active) ? drought_hydro_capacity_mult : 1.0;
+			
+			float availability <- (1.0 - outage_loss) * season_mult * shock_mult;
+			availability_factor_by_source[s] <- max(availability_min, min(availability_max, availability));
+		}
+	}
+	
 	
 	action population_activity(list<human> pop) {
     	ask pop{ // execute the consumption behavior of the population
@@ -200,6 +300,7 @@ species energy parent:bloc {
 			loop e over: production_emissions_E{
 				tick_emissions[e] <- 0.0;
 			}
+			tick_losses_E["kWh energy"] <- 0.0;
 		}
 
 		
@@ -227,6 +328,12 @@ species energy parent:bloc {
 			if ("kWh energy" in demand.keys) {
 				total_energy_demanded <- demand["kWh energy"];
 			}
+			
+			float gross_energy_demanded <- total_energy_demanded;
+			if (enable_energy_stochasticity and network_losses_rate > 0.0) {
+				gross_energy_demanded <- total_energy_demanded / (1.0 - network_losses_rate);
+				tick_losses_E["kWh energy"] <- gross_energy_demanded - total_energy_demanded;
+			}
 
 			map<string, float> mix_ratios <- [
 				"nuclear"::nuclear_mix,
@@ -239,7 +346,7 @@ species energy parent:bloc {
 			bool ok <- true;
 			loop sub_producer over:sub_producers {	
 				string source_name <- sub_producer.get_source_name();		
-				float source_energy_requested <- total_energy_demanded * mix_ratios[source_name];
+				float source_energy_requested <- gross_energy_demanded * mix_ratios[source_name];
 				ask sub_producer {
 					map<string, unknown> info <- produce(["kWh energy"::source_energy_requested]);
 					ok <- bool(info["ok"]);
@@ -313,6 +420,7 @@ species energy parent:bloc {
 		 */
 		int nb_installations <- 0; 
 		float remaining_capacity_kwh_this_tick <- 0.0;
+		float base_capacity_kwh_this_tick <- 0.0;
 		float land_occupied_m2 <- 0.0;
 		map<string, float> tick_resources_used <- [];
 		map<string, float> tick_production <- [];
@@ -362,7 +470,8 @@ species energy parent:bloc {
 				tick_emissions[e] <- 0.0;
 			}
 			
-			remaining_capacity_kwh_this_tick <- get_total_capacity_kwh();
+			base_capacity_kwh_this_tick <- get_total_capacity_kwh();
+			remaining_capacity_kwh_this_tick <- base_capacity_kwh_this_tick * availability_factor_by_source[source_name];
 			tick_resources_used["m² land"] <- land_occupied_m2;
 		}
 		 
@@ -395,7 +504,11 @@ species energy parent:bloc {
 			map<string, float> result <- ["allocated_kwh"::0.0, "shortfall_kwh"::0.0];
 			
 			if(requested_kwh > remaining_capacity_kwh_this_tick){
-				do try_build_installations(requested_kwh - remaining_capacity_kwh_this_tick);
+				if (requested_kwh > base_capacity_kwh_this_tick) {
+					do try_build_installations(requested_kwh - base_capacity_kwh_this_tick);
+					base_capacity_kwh_this_tick <- get_total_capacity_kwh();
+					remaining_capacity_kwh_this_tick <- base_capacity_kwh_this_tick * availability_factor_by_source[source_name];
+				}
 			}
 			
 			float actual_alloc_kwh <- min(requested_kwh, remaining_capacity_kwh_this_tick);
@@ -505,9 +618,10 @@ species energy parent:bloc {
 		 * Consumption varies slightly
 		 */
 		action consume(human h){
-			// float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
-			// float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
-			float individual_kwh <- human_cfg["avg_kwh_per_person"];
+			float base_kwh <- human_cfg["avg_kwh_per_person"];
+			float individual_noise <- (enable_energy_stochasticity and individual_noise_std > 0.0) ? gauss(0.0, individual_noise_std) : 0.0;
+			float individual_kwh <- base_kwh * current_demand_multiplier * (1.0 + individual_noise);
+			individual_kwh <- max(human_cfg["min_kwh_conso"], min(individual_kwh, human_cfg["max_kwh_conso"]));
 			
 			// Add to total consumption
 			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * human_cfg["humans_per_agent"];
@@ -529,6 +643,16 @@ experiment run_energy type: gui {
 	parameter "Solar mix" category:"Mix ratio" var:solar_mix min:0.0 max:1.0;
 	parameter "Wind mix" category:"Mix ratio" var:wind_mix min:0.0 max:1.0;
 	parameter "Hydro mix" category:"Mix ratio" var:hydro_mix min:0.0 max:1.0;
+	
+	parameter "Enable stochasticity" category:"Stochasticity" var:enable_energy_stochasticity;
+	parameter "Network losses rate" category:"Stochasticity" var:network_losses_rate min:0.0 max:0.20;
+	parameter "Demand seasonality amp" category:"Stochasticity" var:demand_seasonality_amp min:0.0 max:0.30;
+	parameter "Demand noise std" category:"Stochasticity" var:demand_noise_std min:0.0 max:0.20;
+	parameter "Individual noise std" category:"Stochasticity" var:individual_noise_std min:0.0 max:0.20;
+	parameter "Outage prob / month" category:"Stochasticity" var:outage_prob_monthly min:0.0 max:0.10;
+	parameter "Drought prob / month" category:"Stochasticity" var:drought_prob_monthly min:0.0 max:0.05;
+	parameter "Drought duration (months)" category:"Stochasticity" var:drought_duration_months min:1 max:24;
+	parameter "Hydro capacity during drought" category:"Stochasticity" var:drought_hydro_capacity_mult min:0.10 max:1.00;
 		
 	
 	output {
@@ -595,6 +719,18 @@ experiment run_energy type: gui {
 			
 			chart "Population direct consumption (kWh)" type: series size: {0.25,0.25} position: {0, 0.75} {
 			    data "Population direct consumption (kWh)" value: tick_pop_consumption_E["kWh energy"];
+			}
+			
+			chart "Demand multiplier" type: series size: {0.25,0.25} position: {0.25, 0.75} {
+			    data "Demand multiplier" value: current_demand_multiplier;
+			}
+			
+			chart "Network losses (kWh)" type: series size: {0.25,0.25} position: {0.5, 0.75} {
+			    data "Losses (kWh)" value: tick_losses_E["kWh energy"];
+			}
+			
+			chart "Hydro availability" type: series size: {0.25,0.25} position: {0.75, 0.75} {
+			    data "Availability" value: availability_factor_by_source["hydro"];
 			}
 	    }
 	}
