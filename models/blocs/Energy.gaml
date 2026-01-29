@@ -26,10 +26,10 @@ global {
 	float network_losses_rate <- 0.079; 		// share of production lost in transmission/distribution (mean)
 	
 	// Demand fluctuations
-	float demand_seasonality_amp <- 0.10; 	// more or less 10% seasonal swing
-	float demand_seasonality_phase <- 0.0; 	// radians
-	float demand_noise_std <- 0.05; 		// gaussian noise (fraction of demand)
-	float individual_noise_std <- 0.03; 	// per-person noise (fraction)
+	float demand_seasonality_amp <- 0.10; 				// more or less 10% seasonal swing
+	float demand_seasonality_phase <- 1.57079633; 		// peak Jan (winter)
+	float demand_noise_std <- 0.05; 					// gaussian noise (fraction of demand)
+	float individual_noise_std <- 0.03; 				// per-person noise (fraction)
 	float demand_multiplier_min <- 0.70;
 	float demand_multiplier_max <- 1.30;
 	
@@ -44,11 +44,13 @@ global {
 	float solar_seasonality_amp <- 0.20;
 	float wind_seasonality_amp <- 0.10;
 	float hydro_seasonality_amp <- 0.15;
-	// Phases chosen to align seasonal peak months for France (month_index: 0=Jan ... 11=Dec)
-	float nuclear_seasonality_phase <- 1.57079633; // peak Jan (winter)
-	float solar_seasonality_phase <- -1.57079633;  // peak Jul (summer)
-	float wind_seasonality_phase <- 1.57079633;    // peak Jan (winter)
-	float hydro_seasonality_phase <- -4.18879020;  // peak Dec (late autumn/early winter)
+	
+	// Phases chosen to align seasonal peak months for France, in radians
+	// - (month_index: 0=Jan ... 11=Dec)
+	float nuclear_seasonality_phase <- 1.57079633; 		// peak Jan (winter)
+	float solar_seasonality_phase <- -1.57079633;  		// peak Jul (summer)
+	float wind_seasonality_phase <- 1.57079633;    		// peak Jan (winter)
+	float hydro_seasonality_phase <- -4.18879020;  		// peak Dec (late autumn/early winter)
 	
 	// Climate shock: drought (affects hydro)
 	float drought_prob_monthly <- 0.005;
