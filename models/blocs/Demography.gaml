@@ -66,6 +66,10 @@ global{
 	float coeff_death_housing <- 1.0;
 	float coeff_birth_housing <- 1.0; // 1.0 = normal, >1.0 = increased natality, <1.0 = decreased natality
 	
+	/* Variables for Global Happiness and Stability */
+	float global_happiness_index <- 0.5; // Starts neutral. Range 0.0 (misery) to 1.0 (euphoria)
+	float coeff_birth_happiness <- 1.0; // Gradually increases if happiness is high
+	
 	/* Seasonal mortality coefficient (higher in winter, lower in summer, averages to 1.0) */
 	// Pre-calculated for 12 months: 0=Jan, 1=Feb, ..., 11=Dec
 	// Peak in winter (~1.08), lowest in summer (~0.92), using cosine wave
@@ -133,6 +137,7 @@ species residents parent:bloc{
 			int current_month <- int(cycle mod 12);
 			coeff_death_seasonal <- seasonal_death_coeffs[current_month];
 			
+			do update_happiness_trend;
 			do update_births;
 			do update_deaths;
 			do increment_age;
@@ -141,7 +146,7 @@ species residents parent:bloc{
 			// Dynamic adjustment of food demand based on mortality/intake
 			do update_food_demand;
 			do update_water_demand;
-			//do update_housing_demand;
+			do update_housing_demand; // Enabled housing demand update
 		}
 		// write "tick" + last_consumed;
 	}
@@ -203,7 +208,25 @@ species residents parent:bloc{
 		float target_intake <- 2000.0;
 		// Use local variable for intake to avoid scope confusion
 		float current_intake <- calorie_intake;
+				// If population has more children, consumption per capita will naturally be lower.
+		// We should target the WEIGHTED REQUIRED INTAKE, not the adult 2200.
+		// Approximations:
+		// 0-18 (kids): ~1400 kcal avg
+		// 18-60 (adults): ~2200 kcal avg
+		// 60+ (elderly): ~1800 kcal avg
+		// Calculate simple weighted average based on age group counts in sample
+		int nb_kids <- individual count (each.age <= 18);
+		int nb_adults <- individual count (each.age > 18 and each.age <= 60);
+		int nb_elderly <- individual count (each.age > 60);
+		int total_sample <- nb_kids + nb_adults + nb_elderly;
 		
+		float weighted_target <- 2200.0;
+		if (total_sample > 0) {
+			weighted_target <- ((nb_kids * 1400.0) + (nb_adults * 2200.0) + (nb_elderly * 1800.0)) / total_sample;
+		}
+		
+		// Adjust target for dynamic demand
+		target_intake <- weighted_target;
 		ask consumer {
 			// If population is starving/hungry (intake too low)
 			if (current_intake < target_intake) {
@@ -306,8 +329,8 @@ species residents parent:bloc{
 		//write "[DEMOGRAPHY] kg meat: " + kg_meat;
 		//write "[DEMOGRAPHY] kg veggies: " + kg_vegetables;
 
-		kg_meat_per_capita <- (last_consumed["kg_meat"] / total_pop);
-		kg_veg_per_capita <- (last_consumed["kg_vegetables"] / total_pop);
+		kg_meat_per_capita <- (last_consumed["kg_meat"] / max(1, total_pop));
+		kg_veg_per_capita <- (last_consumed["kg_vegetables"] / max(1, total_pop));
 		// 2500 kcal per kg of meat, 
 		// 500 kcal per kg of vegetables
 		// average per day
@@ -356,9 +379,14 @@ species residents parent:bloc{
 			coeff_death_cal <- 1.0 + (severity * severity * 3.0);
 		} else if (calorie_intake > ideal_intake) {
 			// Excess calories (obesity) increases mortality moderately
-			// At 2500 kcal: ~1.02x, at 3000 kcal: ~1.08x, at 4000 kcal: ~1.2x
-			float excess <- (calorie_intake - ideal_intake) / 2000.0;
-			coeff_death_cal <- 1.0 + (excess * 0.3);
+			// Added safe zone: up to +10% (buffer) is fine
+			if (calorie_intake <= ideal_intake * 1.1) {
+				coeff_death_cal <- 0.98; // Perfect/Good
+			} else {
+				// At 2500 kcal: ~1.02x, at 3000 kcal: ~1.08x, at 4000 kcal: ~1.2x
+				float excess <- (calorie_intake - (ideal_intake * 1.1)) / 2000.0;
+				coeff_death_cal <- 1.0 + (excess * 0.3);
+			}
 		} else {
 			// Perfect intake: slight bonus
 			coeff_death_cal <- 0.98;
@@ -371,7 +399,7 @@ species residents parent:bloc{
 
 	/* get average water intake based on L_water input */
 	action get_water_intake{
-		L_water_per_capita <- last_consumed["L water"] / total_pop;
+		L_water_per_capita <- last_consumed["L water"] / max(1, total_pop);
 		// average per day
 		L_water_intake <- L_water_per_capita / 30; 
 	}
@@ -416,7 +444,7 @@ species residents parent:bloc{
 	action get_housing_deficit{
 		//write "[DEMOGRAPHY] total population: " + total_pop;
 		//write "[DEMOGRAPHY] total housing capacity: " + last_consumed["total_housing_capacity"];
-		housing_deficit <- total_pop - last_consumed["total_housing_capacity"];
+		housing_deficit <- total_pop - int(last_consumed["total_housing_capacity"]);
 	}
 
 	/* calculate mortality rate by housing deficit */
@@ -457,7 +485,8 @@ species residents parent:bloc{
 	action natality_by_housing{
 		// MIN/MAX tuning parameters
 		float min_coeff <- 0.4;
-		float max_coeff <- 1.1;
+		// Increased maximum to allow significant population growth when conditions are good
+		float max_coeff <- 1.5; 
 
 		// First step protection
 		if (cycle <= 1) {
@@ -466,15 +495,16 @@ species residents parent:bloc{
 		}
 
 		// Housing availability impacts birth rates
-		// Surplus housing: slight bonus ~1.05x
+		// Surplus housing: slight bonus 
 		// Adequate housing: ~1.0x
 		// Small deficit: ~0.9x
 		// Large deficit: down to 0.5x
 		
 		if (housing_deficit <= 0) {
 			// Surplus: people more likely to have children
-			float surplus_ratio <- min(0.2, abs(housing_deficit) / max(1.0, total_pop));
-			coeff_birth_housing <- 1.0 + (surplus_ratio * 0.3);
+			// Increased impact of surplus on birth rate
+			float surplus_ratio <- min(0.3, abs(housing_deficit) / max(1.0, total_pop));
+			coeff_birth_housing <- 1.0 + (surplus_ratio * 1.0); // Boost multiplier
 		} else {
 			// Deficit: people less likely to have children
 			float deficit_ratio <- housing_deficit / max(1.0, total_pop);
@@ -484,6 +514,52 @@ species residents parent:bloc{
 		
 		// Clamp with tuning parameters
 		coeff_birth_housing <- min(max_coeff, max(min_coeff, coeff_birth_housing));
+	}
+	
+	/* updates global happiness based on resource satisfaction */
+	action update_happiness_trend {
+		// Calculate current stress based on mortality coefficients (deviation from 1.0)
+		// Ideal state: coeffs are < 1.0 (bonus from good conditions)
+		float food_stress <- max(0.0, coeff_death_cal - 1.05); // Tolerance up to 1.05 before stress
+		float water_stress <- max(0.0, coeff_death_water - 1.05);
+		float housing_stress <- max(0.0, coeff_death_housing - 1.05);
+		float total_stress <- food_stress + water_stress + housing_stress;
+		
+		// Calculate satisfaction bonuses
+		// Changed to <= 1.01 to include "neutral/met needs" state as positive contribution
+		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
+		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
+		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
+		float total_bonus <- food_bonus + water_bonus + housing_bonus;
+		
+		// Update global happiness index (sluggishly)
+		float target_happiness <- 0.5;
+		if (total_stress > 0) {
+			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
+		} else if (total_bonus > 0) {
+			// If all 3 bonuses met, target is 0.5 + 0.45 = 0.95
+			// If 2 bonuses met, target is 0.5 + 0.30 = 0.80
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15));
+		}
+		
+		// Move towards target (inertia)
+		global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
+
+		// Adjust birth rate based on happiness
+		// If happy (>0.6), birth coefficient rises over time
+		// If unhappy (<0.4), it drops
+		if (global_happiness_index > 0.6) {
+			coeff_birth_happiness <- coeff_birth_happiness + 0.002;
+		} else if (global_happiness_index < 0.4) {
+			coeff_birth_happiness <- coeff_birth_happiness - 0.005;
+		} else {
+			// drift back to 1.0 if neutral
+			if (coeff_birth_happiness > 1.0) { coeff_birth_happiness <- coeff_birth_happiness - 0.001; }
+			else if (coeff_birth_happiness < 1.0) { coeff_birth_happiness <- coeff_birth_happiness + 0.001; }
+		}
+		
+		// Clamp birth coefficient
+		coeff_birth_happiness <- max(0.5, min(1.8, coeff_birth_happiness));
 	}
 
 	/* apply deaths*/
@@ -619,10 +695,20 @@ species residents parent:bloc{
         action consume(human h){
             // float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
             // float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
-			float individual_kg_meat <- resources_to_consume["kg_meat"];
-			float individual_kg_vegetables <- resources_to_consume["kg_vegetables"];
-            float individual_L <- resources_to_consume["L water"];
-			float individual_housing <- resources_to_consume["total_housing_capacity"];
+			
+			// Get individual needs modifier from demography bloc
+			individual ind <- individual(h);
+			float modifier <- 1.0;
+			if (ind != nil) {
+				ask residents { modifier <- get_needs_modifier(ind.age); }
+			}
+
+			// Apply modifier to base demand
+			float individual_kg_meat <- resources_to_consume["kg_meat"] * modifier;
+			float individual_kg_vegetables <- resources_to_consume["kg_vegetables"] * modifier;
+            float individual_L <- resources_to_consume["L water"] * modifier;
+			// Housing is typically 1 unit per person regardless of age (or per household, but simplifying)
+			float individual_housing <- resources_to_consume["total_housing_capacity"]; 
 
             // Add to total consumption
             consumed["kg_meat"] <- consumed["kg_meat"] + individual_kg_meat * pop_per_ind;
@@ -631,6 +717,20 @@ species residents parent:bloc{
             consumed["total_housing_capacity"] <- consumed["total_housing_capacity"] + individual_housing * pop_per_ind;
         }
     }
+
+	/* Get multiplier for resource needs based on age */
+	float get_needs_modifier(int age) {
+		// Infants (0-3): Low consumption
+		if (age <= 3) { return 0.4; } 
+		// Children (4-12): Moderate consumption
+		else if (age <= 12) { return 0.7; }
+		// Teenagers (13-18): High consumption (growth spurt)
+		else if (age <= 18) { return 1.1; }
+		// Adults (19-60): Standard
+		else if (age <= 60) { return 1.0; }
+		// Elderly (60+): Reduced consumption
+		else { return 0.8; }
+	}
 
 }
 
@@ -642,7 +742,7 @@ species residents parent:bloc{
  * These probabilities will depend on somme attributes of the individuals (age, gender ...).
  * We propose some formulas for these probabilities, based on INSEE data. These are rough estimates.
  */
-species individual parent:human{
+	species individual parent:human{
 	float p_death <- 0.0;
 	float p_birth <- 0.0;
 	int ticks_before_birthday <- 0;
@@ -703,7 +803,7 @@ species individual parent:human{
 			do get_housing_deficit;
 			do natality_by_housing;
 		}
-		p_birth <- p_birth * coeff_birth_housing;
+		p_birth <- p_birth * coeff_birth_housing * coeff_birth_happiness;
 
 		return p_birth * coeff_birth;
 	}
@@ -793,9 +893,10 @@ chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: 
 				data "total_births" value: births color: #green;
 				data "total_deaths" value: deaths color: #black;
 			}
-			chart "Birth and death rates (per tick)" type: series size: {0.33,0.33} position: {0.66, 0.66} {
-				data "birth_rate" value: birth_rate color: #green;
-				data "death_rate" value: death_rate color: #red;
+chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0.66} {
+				// (1 + growth_rate) where 1.0 is stable. >1 growing, <1 shrinking.
+				data "growth_factor" value: (total_pop > 0) ? (1.0 + ((birth_rate - death_rate) / total_pop)) : 1.0 color: #blue;
+				data "replacement_level" value: 1.0 color: #black;
             }
 
             chart "Calorie mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0} {
@@ -810,12 +911,19 @@ chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: 
 				data "L_water_per_capita" value: L_water_per_capita color: #blue;
 			}
 
-			chart "Seasonal mortality coefficient" type: series size: {0.33,0.33} position: {0.66, 0} {
+			// Commenting this one because its just a sin graph technically
+			/*chart "Seasonal mortality coefficient" type: series size: {0.33,0.33} position: {0.66, 0} {
 				data "coeff_death_seasonal" value: coeff_death_seasonal color: #cyan;
+			}*/
+			
+			chart "Global happiness index" type: series size: {0.33,0.33} position: {0.66, 0} {
+				data "global_happiness_index" value: global_happiness_index color: #magenta;
 			}
+			
 			chart "Housing coefficients" type: series size: {0.33,0.33} position: {0.66, 0.33} {
 				data "coeff_death_housing" value: coeff_death_housing color: #red;
 				data "coeff_birth_housing" value: coeff_birth_housing color: #purple;
+				data "coeff_birth_happiness" value: coeff_birth_happiness color: #magenta;
 			}
 			
 		}
