@@ -37,6 +37,7 @@ global{
 	// Behavioural parameters
 	float target_occupancy_rate <- 0.95;       // aim for ~95% occupancy
 	float occupancy_hysteresis <- 0.01;         // avoid flip-flop around the target
+	float occupancy_rate <- 0.0;             // population_real / capacity_effective
 	float build_fraction_of_deficit <- 0.25;     // build only a fraction of the deficit per tick (tune)
 	int max_units_per_tick <- 5000;            // CAP in *real* housing units / tick (tune later)
 	int min_units_per_tick <- 0;
@@ -160,6 +161,7 @@ species urbanism parent: bloc{
 
 		// Hysteresis: stop building once we are comfortably below the target occupancy
 		float occupancy <- population_real / max(1.0, capacity_effective);
+		occupancy_rate <- occupancy;
 		if(occupancy <= (target_occupancy_rate - occupancy_hysteresis)) {
 			planned_units <- 0;
 		}
@@ -412,6 +414,7 @@ experiment run_urbanism type: gui {
 		monitor "capacity_scaled" value: capacity_real_scaled;
 		monitor "pop_real" value: population_real;
 		monitor "housing_deficit" value: max(0.0, population_real - capacity_real_scaled);
+		monitor "occupancy" value: occupancy_rate;
 
 		display MiniVille_information {
 			chart "Mini-ville capacity" type: series size: {0.5,0.5} position: {0, 0} {
