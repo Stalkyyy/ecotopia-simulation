@@ -313,6 +313,9 @@ species energy parent:bloc {
 	species energy_producer parent:production_agent {
 		map<string, bloc> external_producers;
 		
+		// Cumulative gross demand requested this tick
+		float requested_gross_kwh_this_tick <- 0.0;
+		
 		// Sub-producer references
 		map<string, sub_energy_producer_base> sub_producers <- [];
 		
@@ -331,11 +334,75 @@ species energy parent:bloc {
 		}
 
 		action reset_tick_counters{
+			requested_gross_kwh_this_tick <- 0.0;
 			loop sub_producer over:sub_producers {
 				ask sub_producer {
 					do reset_tick_counters;
 				}
 			}
+		}
+		
+		float get_total_installed_capacity_all_sources_kwh {
+			float total <- 0.0;
+			loop sp over: sub_producers {
+				total <- total + sp.get_total_installed_capacity_kwh();
+			}
+			return total;
+		}
+		
+		float get_total_operational_capacity_all_sources_kwh {
+			float total <- 0.0;
+			loop sp over: sub_producers {
+				// Operational capacity excludes sites in construction/maintenance
+				total <- total + sp.get_total_capacity_kwh();
+			}
+			return total;
+		}
+		
+		action build_installations_for_deficit(float deficit_kwh, list<string> prioritized_sources) {
+			float remaining_deficit <- deficit_kwh;
+			loop s over: prioritized_sources {
+				if (remaining_deficit <= 0.0) {
+					break;
+				}
+				float cap_per_install <- energy_cfg[s]["capacity_per_installation_kwh"];
+				int n_needed <- int(ceil(remaining_deficit / cap_per_install));
+				if (n_needed <= 0) {
+					continue;
+				}
+				ask sub_producers[s] {
+					do try_build_installations_count(n_needed);
+				}
+				remaining_deficit <- remaining_deficit - (n_needed * cap_per_install);
+			}
+		}
+		
+		action start_builds_for_cumulative_demand(float cumulative_requested_gross_kwh) {
+			// We base the need of building new power plants on both the future installed capacity and current available capacity
+			// as to not build too much but still respond quickly to urgent needs
+			float installed_cap <- get_total_installed_capacity_all_sources_kwh();
+			float operational_cap <- get_total_operational_capacity_all_sources_kwh();
+	
+			float installed_planning_cap <- installed_cap * 0.75;
+			float operational_planning_cap <- operational_cap * 0.90;
+			float planning_cap <- min(installed_planning_cap, operational_planning_cap);
+			float deficit <- cumulative_requested_gross_kwh - planning_cap;
+			if (deficit <= 0.0) {
+				return;
+			}
+			
+			bool huge <- (planning_cap > 0.0) and (deficit >= planning_cap * 0.075);
+			
+			// If the deficit is not too big, we start building solar and wind (fast to build), otherwise we fallback to the usual mix
+			if (!huge) {
+				do build_installations_for_deficit(deficit, ["wind", "solar"]);
+				return;
+			}
+			
+			float renew_deficit <- deficit * (solar_mix + wind_mix);
+			float rest_deficit <- deficit - renew_deficit;
+			do build_installations_for_deficit(renew_deficit, ["wind", "solar"]);
+			do build_installations_for_deficit(rest_deficit, ["nuclear", "hydro"]);
 		}
 		
 		action not_sub_reset_tick {
@@ -410,6 +477,10 @@ species energy parent:bloc {
 				gross_energy_demanded <- total_energy_demanded / (1.0 - network_losses_rate);
 				tick_losses_E["kWh energy"] <- gross_energy_demanded - total_energy_demanded;
 			}
+			
+			// Track cumulative demand this tick
+			requested_gross_kwh_this_tick <- requested_gross_kwh_this_tick + gross_energy_demanded;
+			do start_builds_for_cumulative_demand(requested_gross_kwh_this_tick);
 
 			map<string, float> mix_ratios <- [
 				"nuclear"::nuclear_mix,
@@ -437,7 +508,11 @@ species energy parent:bloc {
 				transmitted_kwh <- total_allocated_gross_kwh * (1.0 - network_losses_rate);
 			}
 			
-			if (transmitted_kwh + 1e-6 < total_energy_demanded) {
+			if (abs(transmitted_kwh - total_energy_demanded) <= max(1.0, total_energy_demanded * 1e-10)) {
+				transmitted_kwh <- total_energy_demanded;
+			}
+
+			if (transmitted_kwh < total_energy_demanded) {
 				ok <- false;
 			}
 			
@@ -609,8 +684,8 @@ species energy parent:bloc {
 		}
 		
 		/*
-		 * Create initial sites that are already built and operational at t0.
-		 * Their remaining lifetimes are uniformly distributed over [1, lifetime_ticks_max].
+		 * Create initial sites that are already built and operational at t0
+		 * Their remaining lifetimes are uniformly distributed over [1, lifetime_ticks_max]
 		 */
 		action create_initial_sites(int n_sites) {
 			if (n_sites <= 0) {
@@ -786,12 +861,8 @@ species energy parent:bloc {
 			remaining_capacity_kwh_this_tick <- base_capacity_kwh_this_tick * availability_factor_by_source[source_name];
 			tick_resources_used["m² land"] <- land_occupied_m2;
 		}
-		 
-		/**
-		 * Dynamically construct energy installations to meet unmet demand. 
-		 */
-		action try_build_installations(float deficit_kwh) {
-			int installations_needed <- int(ceil(deficit_kwh / energy_cfg[source_name]["capacity_per_installation_kwh"]));
+		
+		action try_build_installations_count(int installations_needed) {
 			if (installations_needed <= 0) {
 				return;
 			}
@@ -841,14 +912,6 @@ species energy parent:bloc {
 		map<string, float> allocate_resources(float requested_kwh) {
 			map<string, float> result <- ["allocated_kwh"::0.0, "shortfall_kwh"::0.0];
 			
-			if(requested_kwh > remaining_capacity_kwh_this_tick){
-				if (requested_kwh > base_capacity_kwh_this_tick) {
-					do try_build_installations(requested_kwh - base_capacity_kwh_this_tick);
-					base_capacity_kwh_this_tick <- get_total_capacity_kwh();
-					remaining_capacity_kwh_this_tick <- base_capacity_kwh_this_tick * availability_factor_by_source[source_name];
-				}
-			}
-			
 			float theoretical_kwh <- min(requested_kwh, remaining_capacity_kwh_this_tick);
 			float water_withdrawal_per_kwh <- energy_cfg[source_name]["total_water_input_per_kwh_l"];
 			float water_consumption_per_kwh <- energy_cfg[source_name]["water_per_kwh_l"];
@@ -879,9 +942,8 @@ species energy parent:bloc {
 				actual_alloc_kwh <- theoretical_kwh;
 			}
 			
-			// Fix computation error due to floats (eg. if the request is almost fulfilled by an epsilonesque delta, it's actually fulfilled)
-			float alloc_delta <- theoretical_kwh - actual_alloc_kwh;
-			if (alloc_delta >= 0.0 and alloc_delta <= max(1e-3, theoretical_kwh * 1e-10)) {
+			// Fix computation error due to repeated float operations (if we are close enough to the demanded value, we consider the request fulfilled)
+			if (abs(actual_alloc_kwh - theoretical_kwh) <= max(1.0, theoretical_kwh) * 1e-10) {
 				actual_alloc_kwh <- theoretical_kwh;
 			}
 			
