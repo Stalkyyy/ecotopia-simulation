@@ -37,6 +37,8 @@ global{
 	int nb_inds -> {length(individual)};
 	float births <- 0; // counter, accumulate the total number of births
 	float deaths <- 0; // counter, accumulate the total number of deaths
+	float birth_rate <- 0.0; // births per tick
+	float death_rate <- 0.0; // deaths per tick
 
 	/* Input data */
 	list<string> production_inputs <- ["kg_meat", "kg_vegetables", "L water", "total_housing_capacity"];
@@ -53,16 +55,23 @@ global{
 
 	/* Variables for mortality by calorie intake */
 	float calorie_intake <- 0.0;
-	float p_death_cal <- 0.0;
+	float coeff_death_cal <- 1.0; // 1.0 = normal, >1.0 = increased mortality, <1.0 = decreased mortality
 
 	/* Variables for mortality by water intake */
 	float L_water_intake <- 0.0;
-	float p_death_water <- 0.0;
+	float coeff_death_water <- 1.0;
 
 	/* Variables for mortality and natality by available housing */
 	int housing_deficit <- 0;
-	float p_death_housing <- 0.0;
-	float p_birth_coef_housing <- 0.0;
+	float coeff_death_housing <- 1.0;
+	float coeff_birth_housing <- 1.0; // 1.0 = normal, >1.0 = increased natality, <1.0 = decreased natality
+	
+	/* Seasonal mortality coefficient (higher in winter, lower in summer, averages to 1.0) */
+	// Pre-calculated for 12 months: 0=Jan, 1=Feb, ..., 11=Dec
+	// Peak in winter (~1.08), lowest in summer (~0.92), using cosine wave
+	// I pre-calculated these to avoid computing each turn, not that a simple sin would be too costly, but still.
+	list<float> seasonal_death_coeffs <- [1.08, 1.069, 1.04, 1.0, 0.96, 0.931, 0.92, 0.931, 0.96, 1.0, 1.04, 1.069];
+	float coeff_death_seasonal <- 1.0;
 	
 	init{  
 		// a security added to avoid launching an experiment without the other blocs
@@ -114,10 +123,25 @@ species residents parent:bloc{
 		//map<string, float> demand <- ["kg_meat"::10.0, "kg_vegetables"::10.0, "L water"::10.0, "total_housing_capacity"::10.0];
 		//map<string, unknown> info <- producer.produce(demand);
 		if(enabled){
+			// Reset coefficients to default before recalculating (prevents first-tick spikes)
+			coeff_death_cal <- 1.0;
+			coeff_death_water <- 1.0;
+			coeff_death_housing <- 1.0;
+			coeff_birth_housing <- 1.0;
+			
+			// Update seasonal mortality coefficient based on current month (0=Jan, 11=Dec)
+			int current_month <- int(cycle mod 12);
+			coeff_death_seasonal <- seasonal_death_coeffs[current_month];
+			
 			do update_births;
 			do update_deaths;
 			do increment_age;
 			do update_population;
+			
+			// Dynamic adjustment of food demand based on mortality/intake
+			do update_food_demand;
+			do update_water_demand;
+			//do update_housing_demand;
 		}
 		// write "tick" + last_consumed;
 	}
@@ -174,6 +198,75 @@ species residents parent:bloc{
             do set_supplier(product, bloc_agent);
         }
     }
+    
+    action update_food_demand {
+		float target_intake <- 2000.0;
+		// Use local variable for intake to avoid scope confusion
+		float current_intake <- calorie_intake;
+		
+		ask consumer {
+			// If population is starving/hungry (intake too low)
+			if (current_intake < target_intake) {
+				// Increase demand
+				float boost <- 1.05;
+				if (current_intake < target_intake * 0.8) { boost <- 1.1; } // Crisis speed up
+				
+				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * boost;
+				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * boost;
+			}
+			// If population has excess food (intake too high - obesity risk)
+			else if (current_intake > target_intake + 200) {
+				// Decrease demand - reduce faster if way over limit
+				float reduce <- 0.95;
+				if (current_intake > target_intake + 1000) { reduce <- 0.90; }
+				
+				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * reduce;
+				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * reduce;
+			}
+			
+			// Clamp to reasonable limits
+			// Min: 1kg meat, 5kg veg. Max: 50kg meat, 100kg veg
+			resources_to_consume["kg_meat"] <- max(1.0, min(50.0, resources_to_consume["kg_meat"]));
+			resources_to_consume["kg_vegetables"] <- max(5.0, min(100.0, resources_to_consume["kg_vegetables"]));
+		}
+	}
+	
+	action update_water_demand {
+		float target_water <- 50.0; // 50L/month ~ 1.6L/day
+		float current_water <- last_consumed["L water"] / max(1, total_pop);
+		
+		ask consumer {
+			if (current_water < target_water) {
+				// We don't have enough water -> ask for more
+				resources_to_consume["L water"] <- resources_to_consume["L water"] * 1.05;
+			} else if (current_water > target_water + 20.0) {
+				// We have too much water -> ask for less
+				resources_to_consume["L water"] <- resources_to_consume["L water"] * 0.98;
+			}
+			
+			// Clamp
+			resources_to_consume["L water"] <- max(10.0, min(200.0, resources_to_consume["L water"]));
+		}
+	}
+	
+	action update_housing_demand {
+		// Housing logic: 1 unit per person is the baseline target.
+		// If deficit > 0, it means we have fewer houses than people.
+		// Asking for > 1.0 "housing capacity" per person is a signal to build more.
+		
+		ask consumer {
+			if (housing_deficit > 0) {
+				// Shortage -> increase demand signal
+				resources_to_consume["total_housing_capacity"] <- resources_to_consume["total_housing_capacity"] * 1.05;
+			} else if (housing_deficit <= 0 and resources_to_consume["total_housing_capacity"] > 1.0) {
+				// Surplus -> relax demand signal back towards 1.0
+				resources_to_consume["total_housing_capacity"] <- resources_to_consume["total_housing_capacity"] * 0.98;
+			}
+			
+			// Clamp: Never ask for less than 1.0 (everyone needs a home), max 2.0 (panic mode)
+			resources_to_consume["total_housing_capacity"] <- max(1.0, min(2.0, resources_to_consume["total_housing_capacity"]));
+		}
+	}
 	
 	/* initialize the population */
 	action init_population{
@@ -197,6 +290,7 @@ species residents parent:bloc{
 		int nb_f <- individual count(each.gender=female_gender and not(dead(each)));
 		create individual number:new_births;
 		births <- births + new_births;
+		birth_rate <- new_births * pop_per_ind; // births this tick (actual population)
 	}
 
 	/* 
@@ -221,13 +315,58 @@ species residents parent:bloc{
 		//write "[DEMOGRAPHY]"+ "average daily calorie_intake of a single person in a " + (total_pop / 1000000) + " million pop=" + calorie_intake;
 	}
 
-	/* calculate mortality rate by average calorie intake */
+	/* Get ideal calorie intake based on age (children need less than adults) */
+	float get_ideal_calorie_for_age(int age) {
+		// Based on WHO/FAO recommendations by age group
+		if (age <= 1) { return 800.0; }      // Infants: ~800 kcal/day
+		else if (age <= 3) { return 1300.0; } // Toddlers: ~1300 kcal/day
+		else if (age <= 8) { return 1600.0; } // Young children: ~1600 kcal/day
+		else if (age <= 13) { return 1800.0; } // Pre-teens: ~1800 kcal/day
+		else if (age <= 18) { return 2200.0; } // Teens: ~2200 kcal/day
+		else if (age <= 30) { return 2400.0; } // Young adults: ~2400 kcal/day
+		else if (age <= 60) { return 2200.0; } // Adults: ~2200 kcal/day
+		else if (age <= 75) { return 2000.0; } // Older adults: ~2000 kcal/day
+		else { return 1800.0; }                // Elderly: ~1800 kcal/day
+	}
+	
+	/* calculate mortality coefficient by average calorie intake */
 	action mortality_by_calories{
-		float a <- 0.0007;
-		float b <- 0.004;
-		float R <- 400.0;
-		float u <- 0.00004;
-		p_death_cal <- u + a * (1 / (1 + exp(b*(calorie_intake-R))));
+		// MIN/MAX tuning parameters for sensitivity
+		float min_coeff <- 0.95;
+		float max_coeff <- 1.5; // Lower maximum to prevent rapid population collapse
+
+		// First step protection: ignore mortality updates during initialization
+		if (cycle <= 1) {
+			coeff_death_cal <- 1.0;
+			return;
+		}
+
+		// Use a reasonable population-weighted ideal intake based on typical age distribution
+		// France has a median age around 42, so we use 2100 kcal/day as the average
+		// This avoids the circular dependency of asking individuals during initialization
+		float ideal_intake <- 2000.0;
+		
+		// Now compare actual intake to population-weighted ideal
+		float deviation <- abs(calorie_intake - ideal_intake);
+		
+		if (calorie_intake < ideal_intake) {
+			// Malnutrition increases mortality exponentially
+			// At 1600 kcal: ~1.05x, at 1000 kcal: ~1.5x, at 500 kcal: ~2.5x, at 200 kcal: ~3.5x
+			float severity <- (ideal_intake - calorie_intake) / ideal_intake;
+			coeff_death_cal <- 1.0 + (severity * severity * 3.0);
+		} else if (calorie_intake > ideal_intake) {
+			// Excess calories (obesity) increases mortality moderately
+			// At 2500 kcal: ~1.02x, at 3000 kcal: ~1.08x, at 4000 kcal: ~1.2x
+			float excess <- (calorie_intake - ideal_intake) / 2000.0;
+			coeff_death_cal <- 1.0 + (excess * 0.3);
+		} else {
+			// Perfect intake: slight bonus
+			coeff_death_cal <- 0.98;
+		}
+		
+		// Check cycle here too or rely on early return? (early return handles it)
+		// Clamp with tuning parameters
+		coeff_death_cal <- min(max_coeff, max(min_coeff, coeff_death_cal));
 	}
 
 	/* get average water intake based on L_water input */
@@ -239,10 +378,38 @@ species residents parent:bloc{
 
 	/* calculate mortality rate by average water intake */
 	action mortality_by_water{
-		float a <- 0.015;
-		float b <- 4.0;
-		float R <- 0.3;
-		p_death_water <- a * (1 / (1 + exp(b*(L_water_intake-R))));
+		// MIN/MAX tuning parameters for sensitivity
+		float min_coeff <- 0.95;
+		float max_coeff <- 1.5;
+
+		// First step protection
+		if (cycle <= 1) {
+			coeff_death_water <- 1.0;
+			return;
+		}
+
+		// Ideal water intake: 2-3 L/day
+		// Adequate: 1.5-4 L/day -> coefficient ~1.0
+		// Severe dehydration: <0.5 L/day -> coefficient up to 4.0
+		
+		float ideal_intake <- 2.5;
+		float min_safe <- 1.5;
+		
+		if (L_water_intake < min_safe) {
+			// Dehydration increases mortality exponentially
+			// At 1.0 L: ~1.3x, at 0.5 L: ~2.0x, at 0.2 L: ~3.5x
+			float severity <- (min_safe - L_water_intake) / min_safe;
+			coeff_death_water <- 1.0 + (severity * severity * 4.0);
+		} else if (L_water_intake >= ideal_intake - 0.5 and L_water_intake <= ideal_intake + 0.5) {
+			// Ideal range: slight bonus
+			coeff_death_water <- 0.98;
+		} else {
+			// Adequate but not ideal
+			coeff_death_water <- 1.0;
+		}
+		
+		// Clamp with tuning parameters
+		coeff_death_water <- min(max_coeff, max(min_coeff, coeff_death_water));
 	}
 
 	/* calculate housing deficit */
@@ -254,30 +421,84 @@ species residents parent:bloc{
 
 	/* calculate mortality rate by housing deficit */
 	action mortality_by_housing{
-		float a <- 0.000000000000001;
-		p_death_housing <- a * housing_deficit;
+		// MIN/MAX tuning parameters
+		float min_coeff <- 0.95;
+		float max_coeff <- 1.5;
+
+		// First step protection
+		if (cycle <= 1) {
+			coeff_death_housing <- 1.0;
+			return;
+		}
+
+		// Housing deficit impacts mortality
+		// No deficit (surplus): slight bonus ~0.97x
+		// Small deficit (<10% population): ~1.1x
+		// Moderate deficit (10-30% population): ~1.3-1.8x
+		// Severe deficit (>30% population): up to 2.5x
+		
+		if (housing_deficit <= 0) {
+			// Surplus or exact match: slight bonus
+			// More surplus = slightly better (but diminishing returns)
+			float surplus_ratio <- min(0.3, abs(housing_deficit) / max(1.0, total_pop));
+			coeff_death_housing <- 1.0 - (surplus_ratio * 0.1);
+		} else {
+			// Deficit: exponentially increasing mortality
+			float deficit_ratio <- housing_deficit / max(1.0, total_pop);
+			// At 5% deficit: ~1.05x, at 10%: ~1.15x, at 20%: ~1.4x, at 50%: ~2.5x
+			coeff_death_housing <- 1.0 + (deficit_ratio * 3.0);
+		}
+		
+		// Clamp with tuning parameters
+		coeff_death_housing <- min(max_coeff, max(min_coeff, coeff_death_housing));
 	}
 
 	/* calculate birth rate coefficient by housing deficit */
 	action natality_by_housing{
-		float a <- -10.0;
-		float b <- 0.5;
-		float c <- b/(2*a);
-		float d <- 0.1;
-		p_birth_coef_housing <- (-d/(b*(1+exp(a*(housing_deficit-0.3))))) - c;
-		p_birth_coef_housing <- 1.0 + p_birth_coef_housing;
+		// MIN/MAX tuning parameters
+		float min_coeff <- 0.4;
+		float max_coeff <- 1.1;
+
+		// First step protection
+		if (cycle <= 1) {
+			coeff_birth_housing <- 1.0;
+			return;
+		}
+
+		// Housing availability impacts birth rates
+		// Surplus housing: slight bonus ~1.05x
+		// Adequate housing: ~1.0x
+		// Small deficit: ~0.9x
+		// Large deficit: down to 0.5x
 		
+		if (housing_deficit <= 0) {
+			// Surplus: people more likely to have children
+			float surplus_ratio <- min(0.2, abs(housing_deficit) / max(1.0, total_pop));
+			coeff_birth_housing <- 1.0 + (surplus_ratio * 0.3);
+		} else {
+			// Deficit: people less likely to have children
+			float deficit_ratio <- housing_deficit / max(1.0, total_pop);
+			// At 10% deficit: ~0.85x, at 20%: ~0.7x, at 50%: ~0.5x
+			coeff_birth_housing <- 1.0 - (deficit_ratio * 1.5);
+		}
+		
+		// Clamp with tuning parameters
+		coeff_birth_housing <- min(max_coeff, max(min_coeff, coeff_birth_housing));
 	}
+
 	/* apply deaths*/
 	action update_deaths{
+		int deaths_this_tick <- 0;
 		ask individual{
 			if(ticks_before_birthday<=0){ // check only once a year for each individual
 				if(flip(p_death)){ // every individual has a chance to die every month, or die by reaching max_age
-					deaths <- deaths +1;
+					deaths <- deaths + 1;
+					deaths_this_tick <- deaths_this_tick + 1;
 					do die;
 				}
 			}
 		}
+		death_rate <- deaths_this_tick * pop_per_ind; // deaths this tick (actual population)
 	}
 	
 	/* increments the age of the individual if the tick corresponds to its birthday, and updates birth and death probabilities */
@@ -371,7 +592,9 @@ species residents parent:bloc{
 	species residents_consumer parent:consumption_agent{
     
         map<string, float> consumed <- [];
-		map<string, float> resources_to_consume <- ["kg_meat"::7.0, "kg_vegetables"::10.0, "L water"::50.0, "total_housing_capacity"::1.0];
+		// Initial demand set to ~1500-1600 kcal/day to start (15kg meat + 25kg veg)
+		// 15*2500 + 25*500 = 37500 + 12500 = 50000 / 30 = 1666 kcal/day
+		map<string, float> resources_to_consume <- ["kg_meat"::10.0, "kg_vegetables"::15.0, "L water"::50.0, "total_housing_capacity"::1.0];
         
         map<string, float> get_tick_consumption{
             return copy(consumed);
@@ -460,7 +683,9 @@ species individual parent:human{
 			do get_housing_deficit;
 			do mortality_by_housing;
 		}
-		p_death <- p_death + p_death_cal + p_death_water + p_death_housing;
+		// Apply multiplicative coefficients to preserve age-based death rates
+		// Includes seasonal variation (higher in winter, lower in summer)
+		p_death <- p_death * coeff_death_cal * coeff_death_water * coeff_death_housing * coeff_death_seasonal;
 
 		return  p_death * coeff_death;
 	}
@@ -478,7 +703,7 @@ species individual parent:human{
 			do get_housing_deficit;
 			do natality_by_housing;
 		}
-		p_birth <- p_birth * p_birth_coef_housing;
+		p_birth <- p_birth * coeff_birth_housing;
 
 		return p_birth * coeff_birth;
 	}
@@ -493,14 +718,15 @@ species individual parent:human{
 			write "[DEMOGRAPHY] individual gender: " + gender;
 			write "[DEMOGRAPHY] food intake update";
 			write "calories per capita: " + calorie_intake;
-			write "hunger excess mortality: " + p_death_cal;
+			write "hunger mortality coefficient: " + coeff_death_cal;
 			write "[DEMOGRAPHY] water intake update";
 			write "liters of water per capita: " + L_water_intake;
-			write "water excess mortality: " + p_death_water;
+			write "water mortality coefficient: " + coeff_death_water;
 			write "[DEMOGRAPHY] housing update";
 			write "housing deficit: " + housing_deficit;
-			write "housing excess mortality: " + p_death_housing;
-			write "housing excess natality coef: " + p_birth_coef_housing;
+			write "housing mortality coefficient: " + coeff_death_housing;
+			write "housing natality coefficient: " + coeff_birth_housing;
+			write "seasonal mortality coefficient: " + coeff_death_seasonal;
 			write "p_birth: " + p_birth + "| p_death: " + p_death;
 		}
 		ticks_counter <- ticks_counter + 1;
@@ -563,33 +789,35 @@ experiment run_demography type: gui {
                 data "]75;90]" value: individual count (not dead(each) and (each.age > 75) and (each.age <= 90)) color:#blue;
                 data "]90;105]" value: individual count (not dead(each) and (each.age > 90) and (each.age <= 105)) color:#blue;
             }
-            chart "Births and deaths" type: series size: {0.33,0.33} position: {0, 0.66} {
-                data "number_of_births" value: births color: #green;
-                data "number_of_deaths" value: deaths color: #black;
+chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: {0, 0.66} {
+				data "total_births" value: births color: #green;
+				data "total_deaths" value: deaths color: #black;
+			}
+			chart "Birth and death rates (per tick)" type: series size: {0.33,0.33} position: {0.66, 0.66} {
+				data "birth_rate" value: birth_rate color: #green;
+				data "death_rate" value: death_rate color: #red;
             }
 
-            chart "Calorie related excess mortality" type: series size: {0.33,0.33} position: {0.33, 0} {
-                data "p_death_cal" value: p_death_cal color: #orange;
+            chart "Calorie mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0} {
+                data "coeff_death_cal" value: coeff_death_cal color: #orange;
             }
-            chart "Water related excess mortality" type: series size: {0.33,0.33} position: {0.33, 0.33} {
-                data "p_death_water" value: p_death_water color: #blue;
+            chart "Water mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0.33} {
+                data "coeff_death_water" value: coeff_death_water color: #blue;
             }
-			chart "Daily Meat & Vegetables & Water per capita" type: series size: {0.33,0.33} position: {0.33, 0.66} {
-				data "kg_meat_per_capita" value: kg_meat_per_capita color: #brown;
+			chart "Monthly Meat & Vegetables & Water per capita" type: series size: {0.33,0.33} position: {0.33, 0.66} {
+				data "kg_meat_per_capita" value: kg_meat_per_capita color: #red;
 				data "kg_veg_per_capita" value: kg_veg_per_capita color: #green;
-				data "L_water_per_capita" value: L_water_per_capita color: #cyan;
+				data "L_water_per_capita" value: L_water_per_capita color: #blue;
 			}
 
-            chart "Housing related excess mortality" type: series size: {0.33,0.33} position: {0.66, 0} {
-                data "p_death_housing" value: p_death_housing color: #red;
-            }
-            chart "Housing related excess natality coefficient" type: series size: {0.33,0.33} position: {0.66, 0.33} {
-                data "p_birth_coef_housing" value: p_birth_coef_housing color: #purple;
-            }
-            chart "Housing deficit" type: series size: {0.33,0.33} position: {0.66, 0.66} {
-                data "housing_deficit" value: housing_deficit color: #purple;
-            }
-
+			chart "Seasonal mortality coefficient" type: series size: {0.33,0.33} position: {0.66, 0} {
+				data "coeff_death_seasonal" value: coeff_death_seasonal color: #cyan;
+			}
+			chart "Housing coefficients" type: series size: {0.33,0.33} position: {0.66, 0.33} {
+				data "coeff_death_housing" value: coeff_death_housing color: #red;
+				data "coeff_birth_housing" value: coeff_birth_housing color: #purple;
+			}
+			
 		}
 	}
 }
