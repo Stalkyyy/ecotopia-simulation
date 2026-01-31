@@ -1,5 +1,5 @@
 /**
-* Name: Urbanism bloc (MOSIMA)
+* Name: Urbanism bloc
 * Authors: team A MOSIMA
 */
 

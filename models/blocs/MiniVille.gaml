@@ -1,5 +1,5 @@
 /**
-* Name: Mini-villes (MOSIMA)
+* Name: Mini-villes
 * Shared core entity used by all blocs.
 */
 

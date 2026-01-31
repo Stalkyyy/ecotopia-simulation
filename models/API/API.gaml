@@ -7,7 +7,7 @@
 
 model API
 import "../blocs/Ecosystem.gaml"
-import "../blocs/mini_ville.gaml"
+import "../blocs/MiniVille.gaml"
 
 /*
  * Species used to represent a bloc.
