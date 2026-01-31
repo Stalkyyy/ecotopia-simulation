@@ -8,7 +8,8 @@
 
 model CitySimulation
 
-/* Insert your model definition here */
+
+/* But: Avoir des valeurs sur le nombre de véhicules nécessaires en fonction du nombre de personne  */
 
 global {
 
@@ -40,7 +41,7 @@ global {
     // -----------------------
     // VEHICLE TYPES
     // -----------------------
-    list<string> vehicle_types <- ["walk", "bicycle", "mini_bus", "taxi"];
+    list<string> vehicle_types <- ["walk", "bicycle", "mini_bus", "taxi"]; // truck and train not represented in this scale
 
     // km usage per tick per vehicle
     map<string, float> km_usage <- [
@@ -57,6 +58,9 @@ global {
         "mini_bus"::0,
         "taxi"::0
     ];
+    
+    
+    map<string, int> max_vehicles_needed <- ["walk"::0, "bicycle"::0, "mini_bus"::0, "taxi"::0];
 
     // -----------------------
     // TRAIN STATION
@@ -89,6 +93,12 @@ global {
     // RESET METRICS EACH TICK
     // -----------------------
     reflex reset_metrics {
+    	// check for peaks before reset
+    	loop v over: vehicle_types {
+    		if (vehicles_needed[v] > max_vehicles_needed[v]) {
+    			max_vehicles_needed[v] <- vehicles_needed[v];
+    		}
+    	}
     	// reset vehicles needed and usage
     	loop v over: vehicle_types{
 	        km_usage[v] <- 0.0;
@@ -104,6 +114,11 @@ global {
     // STOP AFTER 1 WEEK
     // -----------------------
     reflex stop_simulation when: cycle >= simulation_duration {
+    	save ["Vehicle Type", "Max Needed"] to: "max_values_mini_ville.csv" rewrite: true;
+    	loop v over: max_vehicles_needed.keys {
+    		save [v, max_vehicles_needed[v]] to: "max_values_mini_ville.csv" rewrite: false;
+    	}
+    	write "Simulation finished. Peaks saved to max_values.csv";
         do pause;
     }
 }
@@ -116,10 +131,19 @@ species citizen {
     point home;
     point work;
 
-    string activity <- "none"; // sleep, work, leisure, travel
+    string activity <- "sleep"; // sleep, work, leisure, travel
     string current_vehicle <- "walk";
 
     bool visible_agent;
+    
+    // Schedule
+    bool is_working_today <- false;
+    int start_work_hour <- -1;
+    int end_work_hour <- -1;
+    
+    int wake_up_hour <- -1; // non workers wake up hour
+    int bed_time_hour <- -1;
+    
 
     // -----------------------
     // INIT
@@ -129,20 +153,109 @@ species citizen {
         work <- city_agent.get_random_position_in_city();
         location <- home;
         visible_agent <- (rnd(1.0) <= display_ratio);
+        
+        do plan_daily_schedule;
     }
+    
+    action plan_daily_schedule {
+    	// bedtime: gradual 20~23h
+    	bed_time_hour <- int(max(20, min(23, gauss(21.5, 1.5))));
+    	
+    	// Work/Leisure (0.5 <- 3.5 days per week of work on average)
+    	if (flip(0.5)) {
+    		is_working_today <- true;
+    		
+    		// gaussian distribution for start time
+    		// IRL the peaks are at 7:00 and 17:00 but ecotopia -> 5.5h / day -> 9:15 to 14:45 -> simplification 9:30 to 14:30
+    		float start_time <- gauss(9.5, 1.5);
+    		start_work_hour <- int(max(4, min(14, start_time))); // clamp 4am~2pm
+    		
+    		// Work duration ~5h
+    		end_work_hour <- start_work_hour + 5; 
+    		
+    	} else {
+    		is_working_today <- false;
+    		
+    		// mean 9:00, min 6:00, max 11:00
+    		wake_up_hour <- int(max(6, min(11, gauss(9.0, 1.0))));
+    	}
+    }
+    
+    
+    // -----------------------
+    // DAILY PLANNER
+    // -----------------------
+    //reflex plan_the_day when: current_date.hour = 0 {
+    //	activity <- "sleep";
+    //	
+    //	// 3.5 days per week on average -> 0.5 probability
+    //	if (flip(0.5)) {
+    //		is_working_today <- true;
+    //		
+    //		// gaussian distribution for start time
+    //		// IRL the peaks are at 7:00 and 17:00 but ecotopia -> 5.5h / day -> 9:30 to 14:30
+    //		// avg: 09:30 std: 1.5 hours (
+    //		float start_time <- gauss(8.5, 1.5);
+    //		start_work_hour <- int(max(4, min(14, start_time))); // clamp 4am~2pm
+    //		
+    //		// work for 5.5h ≈ 6
+    //		end_work_hour <- start_work_hour + 6; // suppose it's exactly 6, it will look like a gaussian anyway
+    //	} else {
+    //		is_working_today <- false;
+    //		activity <- "leisure"; // TODO travel sometimes ?
+    //	}
+    //}
+    
+    reflex new_day_planning when: current_date.hour = 0 {
+    	do plan_daily_schedule;
+    }
+    
 
     // -----------------------
     // SIMPLE PLACEHOLDER ACTIVITY LOGIC
     // -----------------------
-    reflex update_activity {
-        if (current_date.hour < 7) {
-            activity <- "sleep";
-        } else if (current_date.hour >= 8 and current_date.hour <= 17) {
-            activity <- "work";
-        } else {
-            activity <- "leisure";
-        }
+    //reflex update_activity {
+    //    if (current_date.hour < 7) {
+    //        activity <- "sleep";
+    //    } else if (current_date.hour >= 8 and current_date.hour <= 17) {
+    //        activity <- "work";
+    //    } else {
+    //        activity <- "leisure";
+    //    }
+    //}
+    
+    // -----------------------
+    // ACTIVITY LOGIC
+    // -----------------------
+    
+    // sleep -> leisure
+    reflex wake_up_leisure when: !is_working_today and current_date.hour = wake_up_hour and activity = "sleep" {
+    	activity <- "leisure";
     }
+    
+    // home -> work
+    reflex commute_to_work when: is_working_today and current_date.hour = start_work_hour and location = home {
+    	activity <- "work";
+    	
+    	do add_travel_to_total(vehicle_usage(home, work, create_vehicle_choice_initial_usage()));
+    	location <- work;
+    }
+    
+    // work -> home
+    reflex commute_to_home when: is_working_today and current_date.hour = end_work_hour and location = work {
+    	activity <- "leisure";
+    	
+    	do add_travel_to_total(vehicle_usage(work, home, create_vehicle_choice_initial_usage()));
+    	location <- home;
+    }
+    
+    // leisure -> sleep
+    reflex go_to_sleep when: current_date.hour = bed_time_hour and activity != "sleep" {
+    	activity <- "sleep";
+    	// Note: We don't need to teleport home because 'commute_to_home' already sent them home.
+    	// If they are strictly "leisure" agents, they are at home (or we assume they are).
+    }
+    
 
     // -----------------------
     // SIMPLE PLACEHOLDER TRAVEL LOGIC
@@ -173,16 +286,18 @@ species citizen {
     		usage["bicycle"] <- usage["bicycle"] + distance - distance_walked;
     		return usage;
     	}
-    	// test si un bus serait intéressant à utiliser : si la distance de start au stop le plus proche de start + la distance entre end et son stop le plus proche) son plus proche que la distance entre start et end
+    	// test si un bus serait intéressant à utiliser :
+    	// si distance(start, stop le plus proche de start) + distance(end, stop le plus proche de end)
+    	// est plus proche que distance(start, end)
 		if (bus_agent.should_use_bus(start, end)) {
-		    int s_start <- bus_agent.closest_bus_stop_index(start);
-		    int s_end <- bus_agent.closest_bus_stop_index(end);
+		    int bus_stop_start <- bus_agent.closest_bus_stop_index(start);
+		    int bus_stop_end <- bus_agent.closest_bus_stop_index(end);
 		    // ajout de la distance parcourue en bus (+ notice au système de bus pour qu'ils puissent traquer l'utilisation des bus)
-		    float bus_distance <- bus_agent.register_bus_flow(s_start, s_end);
 			// on cherche à présent les déplacements start->stop->stop->end
-		    usage <- vehicle_usage(start, bus_agent.bus_stops[s_start], usage);
+		    float bus_distance <- bus_agent.register_bus_flow(bus_stop_start, bus_stop_end); // not used here
 //		    usage["mini_bus"] <- usage["mini_bus"] + bus_distance;						// nope, this would not take into account the fact that citizens share the busses
-		    usage <- vehicle_usage(bus_agent.bus_stops[s_end], end, usage);
+		    usage <- vehicle_usage(start, bus_agent.bus_stops[bus_stop_start], usage);
+		    usage <- vehicle_usage(bus_agent.bus_stops[bus_stop_end], end, usage);
 		    return usage;
 		}
 		// sinon : random entre taxi et vélo+marche
@@ -211,17 +326,17 @@ species citizen {
     	}
     }
     
-    reflex travel when: activity = "work" and location != work {
-
-        do add_travel_to_total(vehicle_usage(location, work, create_vehicle_choice_initial_usage()));
-        
-        location <- work;
-    }
+//  reflex travel when: activity = "work" and location != work {
+//
+//      do add_travel_to_total(vehicle_usage(location, work, create_vehicle_choice_initial_usage()));
+//     
+//      location <- work;
+//  }
 
     // -----------------------
     // DISPLAY COLOR BY ACTIVITY
     // -----------------------
-    rgb color {
+    rgb agent_color {
         switch activity {
             match "sleep" {return rgb(120, 120, 255);}
             match "work" {return rgb(255, 80, 80);}
@@ -233,7 +348,7 @@ species citizen {
 
     aspect base {
         if (visible_agent) {
-            draw circle(5) color: color;
+            draw circle(5) color: agent_color();
         }
     }
 }
@@ -425,22 +540,38 @@ experiment city_simulation type: gui {
 			species city aspect: base;
 			species bus_system aspect: base;
             species citizen aspect: base;
+            graphics "Time Display" {
+                string time_str <- "Day " + current_date.day + " - " + (current_date.hour < 10 ? "0" : "") + current_date.hour + ":00";
+                
+                draw time_str at: {100, 100} color: #black font: font("Helvetica", 80, #bold);
+            }
         }
 
         display chart refresh: every(1#cycles) {
 	        // -----------------------
-	        // GRAPH 1: KM USAGE
+	        // GRAPH 1: ACTIVITY DISTRIBUTION
 	        // -----------------------
-	        chart "Vehicle km usage per tick" type: series size: {0.75,0.75} position: {0, -0.375+0.1} {
+	        chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} {
+	            data "Sleep" value: citizen count (each.activity = "sleep") color: rgb(120, 120, 255);
+	            data "Work" value: citizen count (each.activity = "work") color: rgb(255, 80, 80);
+	            data "Leisure" value: citizen count (each.activity = "leisure") color: rgb(80, 255, 120);
+	            data "Travel" value: citizen count (each.activity = "travel") color: rgb(255, 200, 80);
+	        }
+
+	        // -----------------------
+	        // GRAPH 2: KM USAGE
+	        // -----------------------
+	        chart "Vehicle km usage per tick" type: series size: {0.5, 0.5} position: {0, 0.5} {
 	            data "Walk" value: km_usage["walk"];
 	            data "Bicycle" value: km_usage["bicycle"];
 	            data "Mini-bus" value: km_usage["mini_bus"];
 	            data "Taxi" value: km_usage["taxi"];
 	        }
+	        
 	        // -----------------------
-	        // GRAPH 2: VEHICLES NEEDED
+	        // GRAPH 3: VEHICLES NEEDED
 	        // -----------------------
-	        chart "Vehicles needed per tick" type: series size: {0.75,0.75} position: {0, 0.375+0.1} y_log_scale:true {
+	        chart "Vehicles needed per tick" type: series size: {0.5, 0.5} position: {0.5, 0.5} y_log_scale:true {
 	            data "Walk" value: vehicles_needed["walk"];
 	            data "Bicycle" value: vehicles_needed["bicycle"];
 	            data "Mini-bus" value: vehicles_needed["mini_bus"];
