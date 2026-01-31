@@ -121,7 +121,7 @@ species ecosystem parent:bloc {
     }
     
     
-    action tick(list<human> pop) {
+    action tick(list<human> pop, list<mini_ville> cities) {
         do regenerate_resources();
         do absorb_ges();
         do collect_last_tick_data();

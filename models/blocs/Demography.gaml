@@ -108,7 +108,7 @@ species residents parent:bloc{
 	}
 	
 	/* updates the population every tick */
-	action tick(list<human> pop){
+	action tick(list<human> pop, list<mini_ville> cities){
 		do population_activity(pop);
 		do collect_last_tick_data;
 		//map<string, float> demand <- ["kg_meat"::10.0, "kg_vegetables"::10.0, "L water"::10.0, "total_housing_capacity"::10.0];

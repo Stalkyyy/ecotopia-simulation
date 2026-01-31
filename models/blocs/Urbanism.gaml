@@ -1,5 +1,5 @@
 /**
-* Name: Urbanism bloc (MOSIMA)
+* Name: Urbanism bloc
 * Authors: team A MOSIMA
 */
 
@@ -16,7 +16,6 @@ global{
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
 	map<string, int> init_units <- ["wood"::1700, "modular"::1700];
-	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
 	map<string, float> surface_per_unit <- ["wood"::80.0, "modular"::60.0]; // m2 per unit
 	
 	// Resource needs per unit (defaults, to be refined with data)
@@ -53,11 +52,27 @@ global{
 /**
  * Bloc implementation (macroscale scaffold)
  */
-species urbanism parent: bloc{
+species urbanism parent: bloc{			
 	string name <- "urbanism";
 	urban_producer producer <- nil;
+	bool cities_logged <- false;
 	
 	action setup{
+		// initialize mini-villes near existing cities (if any)
+		list<city> cities <- (city as list<city>);
+		int n <- min(mini_ville_count, length(cities));
+		if(n > 0){
+			loop c over: cities {
+				if(n <= 0) { break; }
+				create mini_ville number: 1 {
+                location <- c.location;
+            }
+				n <- n - 1;
+			}
+		} else {
+			create mini_ville number: mini_ville_count;
+		}
+		
 		list<urban_producer> producers <- [];
 		create urban_producer number:1 returns: producers;
 		producer <- first(producers);
@@ -72,10 +87,15 @@ species urbanism parent: bloc{
 		return ["total_housing_capacity"];
 	}
 	
-	action tick(list<human> pop){
+	action tick(list<human> pop, list<mini_ville> cities){
 		do reset_tick_counters;
 		ask producer { do reset_tick_counters; }
 		do sync_available_land;
+		
+		if(not cities_logged){
+			write "urbanism received mini_villes=" + length(cities);
+			cities_logged <- true;
+		}
 		
 		int occupants <- length(pop);
 		population_count <- occupants;
@@ -264,6 +284,9 @@ experiment run_urbanism type: gui {
 			chart "Surface saturation" type: series size: {0.5,0.5} position: {0.5, 0.5} {
 				data "surface_used (scaled)" value: surface_used_scaled color: #green;
 				data "constructible_surface" value: constructible_surface_total color: #black;
+			}
+			chart "Mini-ville overview" type: series size: {0.5,0.5} position: {0, 1.0} {
+				data "mini_ville_count" value: length(mini_ville) color: #blue;
 			}
 		}
 	}
