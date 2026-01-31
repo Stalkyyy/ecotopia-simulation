@@ -420,17 +420,30 @@ species energy parent:bloc {
 			
 			// Execute production per energy source
 			bool ok <- true;
+			float total_allocated_gross_kwh <- 0.0;
 			loop sub_producer over:sub_producers {	
 				string source_name <- sub_producer.get_source_name();		
 				float source_energy_requested <- gross_energy_demanded * mix_ratios[source_name];
 				ask sub_producer {
 					map<string, unknown> info <- produce(["kWh energy"::source_energy_requested]);
-					ok <- bool(info["ok"]);
+					if ("allocated_kwh" in info.keys) {
+						total_allocated_gross_kwh <- total_allocated_gross_kwh + float(info["allocated_kwh"]);
+					}
 				}				
 			}
 			
+			float transmitted_kwh <- total_allocated_gross_kwh;
+			if (enable_energy_stochasticity and network_losses_rate > 0.0) {
+				transmitted_kwh <- total_allocated_gross_kwh * (1.0 - network_losses_rate);
+			}
+			
+			if (transmitted_kwh + 1e-6 < total_energy_demanded) {
+				ok <- false;
+			}
+			
 			map<string, unknown> prod_info <- [
-            	"ok"::ok
+            	"ok"::ok,
+            	"transmitted_kwh"::transmitted_kwh
             ];
 							       
 			return prod_info;
@@ -902,18 +915,19 @@ species energy parent:bloc {
 			if("kWh energy" in demand.keys) {
 				float req <- demand["kWh energy"];
 				if (req <= 0) {
-					return ["ok" :: true];
+					return ["ok" :: true, "allocated_kwh"::0.0];
 				}
 				
 				map<string,float> res <- allocate_resources(req);
 				
 				map<string, unknown> prod_info <- [
-            		"ok"::res["shortfall_kwh"] <= 0.0
+            		"ok"::res["shortfall_kwh"] <= 0.0,
+            		"allocated_kwh"::res["allocated_kwh"]
             	];
 				
 				return prod_info;
 			}
-			return ["ok" :: true];
+			return ["ok" :: true, "allocated_kwh"::0.0];
 		}
 	}
 	
