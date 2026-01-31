@@ -62,6 +62,13 @@ species production_agent{
 			do receive_ges_emissions(ges);
 		}
 	}
+	
+	/* Reinject water withdrawn but not consumed back into the ecosystem water stock */
+	action reinject_water_to_ecosystem(float water_l) {
+		ask ecosystem {
+			do receive_water_reinjection(water_l);
+		}
+	}
 }
 
 /* 
