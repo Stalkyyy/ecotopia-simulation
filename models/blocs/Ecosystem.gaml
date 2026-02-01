@@ -42,12 +42,12 @@ global {
     float water_max_stock_l <- initial_water_stock_l; 								
     
     // Monthly production / Seasonal production
-    float monthly_water_regeneration <- 1.75e13;			//TODO: Look up again for this data (excluding rainfall)
-    map<string, float> rainfall_season_coeff <- [			//TODO: Look up again for the real, correct data
-    	"winter"::1.2,
-    	"spring"::1.0, 
-    	"summer"::0.6,
-    	"autumn"::1.1
+    float monthly_water_regeneration <- 1.75e13;
+    map<string, float> monthly_seasonal_water_regeneration <- [
+    	"winter"::0.48 * monthly_water_regeneration,
+    	"spring"::0.1 * monthly_water_regeneration, 
+    	"summer"::0.02 * monthly_water_regeneration,
+    	"autumn"::0.4 * monthly_water_regeneration
     ];
     
     
@@ -74,7 +74,18 @@ global {
     float total_land_france_m2 <- 5.4394e11; 										
     float land_protected <- total_land_france_m2 * 0.28;	// 28% of the total land in m²
     float land_stock <- total_land_france_m2 - land_protected - total_forest_area_m2;	
-    float land_occupied <- 0.0;  														
+    float land_occupied <- 0.0; 
+    
+    
+    /*
+     * WILDLIFE & HUNTING
+     */
+    float wildlife_population <- 9500000;						// total population of hunted species
+	float wildlife_capacity <- 10000000;						// max capacity
+	float wildlife_birth_rate <- 0.15;      					// per month
+	float wildlife_mortality_rate <- 0.02;						// natural death, per month
+	float wildlife_hunted_this_tick <- 0.0;
+	float wildlife_hunted_last_tick <- 0.0; 														
     
     
     /*
@@ -136,6 +147,7 @@ species ecosystem parent:bloc {
     
     
     action tick(list<human> pop) {
+    	do update_wildlife_population();
     	do update_time_and_season();
         do regenerate_resources();
         do absorb_ges();
@@ -178,6 +190,35 @@ species ecosystem parent:bloc {
      		season <- "autumn";
      	}
      }
+     
+     
+     
+     /**
+     * Wildlife population evolution and hunting
+     */
+    action update_wildlife_population {
+	    float births <- wildlife_birth_rate * wildlife_population * (1 - wildlife_population / wildlife_capacity);
+	    float deaths <- wildlife_mortality_rate * wildlife_population;
+	
+	    wildlife_population <- wildlife_population 
+	                            + births 
+	                            - deaths 
+	                            - wildlife_hunted_this_tick;
+	
+	    wildlife_population <- max(0.0, wildlife_population);
+	    wildlife_hunted_this_tick <- 0.0; // reset
+	}
+	
+	action hunt_request(float requested){
+		float max_hunt_per_month <- 38000000.0 / 12.0;
+	    float sustainable_hunt <- min(wildlife_population * 0.02, max_hunt_per_month); 
+	    float allowed <- min(requested, sustainable_hunt);
+	
+	    wildlife_hunted_this_tick <- wildlife_hunted_this_tick + allowed;
+	    wildlife_hunted_last_tick <- allowed;
+	
+	    return allowed;
+	}
     
 
     
@@ -189,7 +230,7 @@ species ecosystem parent:bloc {
     	
         // Water regeneration : constant amount per month
         //water_stock_l <- min(water_stock_l + monthly_water_regeneration, water_max_stock_l);  
-        float effective_water_regeneration <- monthly_water_regeneration * rainfall_season_coeff[season];
+        float effective_water_regeneration <- monthly_seasonal_water_regeneration[season];
         water_stock_l <- min(water_stock_l + effective_water_regeneration, water_max_stock_l);
         
         // Wood regeneration : constant amount per month
@@ -222,6 +263,15 @@ species ecosystem parent:bloc {
     	ges_stock <- ges_stock + (emissions_gCO2e / 1000000.0);  // Convert gCO2e to kg
     	tick_ges_received_eco["total"] <- tick_ges_received_eco["total"] + emissions_gCO2e;
 	}
+	
+	/*
+     * Receive water reinjected by other blocs (e.g. cooling water from energy production)
+     */
+    action receive_water_reinjection(float water_l) {
+        water_stock_l <- min(water_stock_l + water_l, water_max_stock_l);
+    }
+	
+	
     
     action collect_last_tick_data{
         if(cycle > 0){
@@ -364,12 +414,12 @@ experiment run_ecosystem type: gui {
     	monitor "Month" value: month;
 		monitor "Year" value: year;
 		monitor "Season" value: season;
-		monitor "Water regen (L/month)" value: monthly_water_regeneration * rainfall_season_coeff[season];
+		monitor "Water regen (L/month)" value: monthly_seasonal_water_regeneration[season];
     
         display Ecosystem_information {
             
             // Water stock evolution
-            chart "Water stock (Liters)" type: series size: {0.5,0.5} position: {0, 0} {
+            chart "Water stock (Liters)" type: series size: {0.5,0.5} position: {0, 0} y_log_scale:true {
                 data "Stock" value: water_stock_l;
                 data "Max available" value: water_max_stock_l;
             }
@@ -390,6 +440,20 @@ experiment run_ecosystem type: gui {
             chart "GES balance (kg CO2e)" type: series size: {0.5,0.5} position: {0.5, 0.5} {
                 data "GES in atmosphere" value: ges_stock;
             }
+            
+            // Wildlife population
+            chart "Wildlife population" type: series size: {0.5,0.5} position: {1, 0} {
+			    data "Population animale" value: wildlife_population;
+			    data "Capacité écologique" value: wildlife_capacity;
+			}
+			
+			// Proportion hunted animals
+			chart "Wildlife hunting pressure" type: series 
+			      size: {0.5,0.5} 
+			      position: {1, 0.5} {
+			
+			    data "Animaux chassés" value: wildlife_hunted_last_tick;
+			}
         }
     }
 }
