@@ -19,6 +19,7 @@ global{
 	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables", "kg_cotton"];
 	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land", "km/kg_scale_2"];
 	list<string> production_emissions_A <- ["gCO2e emissions"];
+	list<string> production_demand_A <- ["kg_meat", "kg_vegetables", "kg_cotton"];
 	
 	/* Parameter for transport */
 	float distance <- 50.0;
@@ -81,6 +82,7 @@ global{
 	map<string, float> tick_pop_consumption_A <- [];
 	map<string, float> tick_resources_used_A <- [];
 	map<string, float> tick_emissions_A <- [];
+	map<string, float> tick_demand_A <- [];
 	
 	/* Parameters for hunting */
 	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
@@ -177,6 +179,8 @@ species agricultural parent:bloc{
 	
 	action tick(list<human> pop) {
 		
+		write "nouveau tick";
+		
 		do collect_last_tick_data();
 		
 		//do population_activity(pop);
@@ -209,6 +213,10 @@ species agricultural parent:bloc{
 		return production_emissions_A;
 	}
 	
+	list<string> get_demand_labels{
+		return production_demand_A;
+	}
+	
 	
 	action receive_waste_food(float waste) {
 		food_waste_received <- waste;
@@ -220,6 +228,10 @@ species agricultural parent:bloc{
 	    	tick_resources_used_A <- producer.get_tick_inputs_used(); // collect resources used
 	    	tick_production_A <- producer.get_tick_outputs_produced(); // collect production
 	    	tick_emissions_A <- producer.get_tick_emissions(); // collect emissions
+	    	tick_demand_A <- producer.get_tick_demand(); // collect demand of other sectors
+	    	
+	    	//write "demandes : " + tick_demand_A;
+	    	//write "produit : " + tick_production_A;
 	    	
 	    	production_this_tick <- copy(tick_production_A);
 	    	do production_fertilizer;
@@ -482,6 +494,7 @@ species agricultural parent:bloc{
 		map<string, float> tick_resources_used <- [];
 		map<string, float> tick_production <- [];
 		map<string, float> tick_emissions <- [];
+		map<string, float> tick_demand <- [];
 		
 		init{
 			external_producers <- []; // external producers that provide the needed resources
@@ -493,6 +506,10 @@ species agricultural parent:bloc{
 		
 		map<string, float> get_tick_outputs_produced{
 			return tick_production;
+		}
+		
+		map<string, float> get_tick_demand{
+			return tick_demand;
 		}
 		
 		map<string, float> get_tick_emissions{
@@ -514,6 +531,9 @@ species agricultural parent:bloc{
 			loop e over: production_emissions_A{
 				tick_emissions[e] <- 0.0;
 			}
+			loop e over:production_demand_A{
+				tick_demand[e] <- 0.0;
+			}
 			
 			// reset of hunted animals
 			hunted_animals <- 0;
@@ -523,106 +543,178 @@ species agricultural parent:bloc{
 		
 		
 		map<string, unknown> produce(map<string,float> demand){
-
 		    bool ok <- true;
+		    map<string,map<string, unknown>> data_production;
+		    		    
+		    //list<string> priority <- ["kg_vegetables", "kg_meat", "kg_cotton"];
+		    
+		    //write "demandes : " + demand;
+		    
+		    map<string, unknown> res <- [
+		    	"ok"::true,
+		    	"transmitted_vegetables"::0.0,
+		    	"transmitted_meat"::0.0,
+		  		"transmitted_cotton"::0.0
+		    ];
 		
-		    loop c over: demand.keys{
-		
-		        if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
-		
-		            float from_stock <- 0.0;
-		            float seasonal_overprod <- 0.0;
-		            ask one_of(agricultural){
-		                from_stock <- get_stock_to_consume(c, demand[c]);
-		                seasonal_overprod <- get_seasonal_overproduction();
-		            }
-		
-		            float to_produce <- demand[c] - from_stock;
-		            if (to_produce < 0.0) { to_produce <- 0.0; }
-		
-		            // livré visé (surproduction)
-		            //float deliver <- to_produce * (1 + overproduction_factor);
-		            float deliver <- to_produce * (1 + seasonal_overprod);
-		            
-					ask one_of(agricultural) {
-					    production_this_tick[c] <- production_this_tick[c] + deliver;
-					}
+		    loop c over: demand.keys(){
+		    	
+		    	tick_demand[c] <- tick_demand[c] + demand[c];
+	    			    		
+	            float from_stock <- 0.0;
+	            float seasonal_overprod <- 0.0;
+	            ask one_of(agricultural){
+	                from_stock <- get_stock_to_consume(c, demand[c]);
+	                seasonal_overprod <- get_seasonal_overproduction();
+	            }
+	
+	            float to_produce <- demand[c] - from_stock;
+	            if (to_produce < 0.0) { to_produce <- 0.0; }
+	
+	            // livré visé (surproduction)
+	            //float deliver <- to_produce * (1 + overproduction_factor);
+	            float deliver <- to_produce * (1 + seasonal_overprod);
+	            
+				ask one_of(agricultural) {
+					production_this_tick[c] <- production_this_tick[c] + deliver;
+				}
 
-		
-		            // aide (chasse / engrais) = livré
-		            float additional_production <- 0.0;
-		
-		            if(c = "kg_meat"){
-		                do hunting(deliver);
-		                additional_production <- hunted_animals_kg;
-		            }
-		            if(c = "kg_vegetables"){
-		                //additional_production <- float(application_fertilizer("kg_vegetables"));
-						additional_production <- float(application_fertilizer("kg_vegetables"));
+	            // aide (chasse / engrais) = livré
+	            float additional_production <- 0.0;
+	
+	            if(c = "kg_meat"){
+	                do hunting(deliver);
+	                additional_production <- hunted_animals_kg;
+	            }
+	            if(c = "kg_vegetables"){
+	                //additional_production <- float(application_fertilizer("kg_vegetables"));
+					additional_production <- float(application_fertilizer("kg_vegetables"));
 
-		            }
-		            if(c = "kg_cotton"){
-		                additional_production <- float(application_fertilizer("kg_cotton"));
-		            }
-		
-		            // on borne : pas plus que ce qu'on veut livrer
-		            float additional_used <- min(additional_production, deliver);
-		
-		            // reste à produire "normalement" (livré)
-		            float deliver_remaining <- deliver - additional_used;
-						            
-		
-		            // ---- INPUTS / EMISSIONS sur la prod normale ----
-		            loop u over: production_inputs_A{
-		
-		                if(external_producers.keys contains u){
-		
-		                    float quantity_needed <- 0.0;
-		
-		                    if(u = "km/kg_scale_2"){
-		                        quantity_needed <- production_output_inputs_A[c][u] * demand[c];
-		                        tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
-		
-		                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
-		                        if not bool(info["ok"]) { ok <- false; }
-		                        continue;
-		                    }
-		
-		                    quantity_needed <- production_output_inputs_A[c][u] * deliver_remaining;
-		
-		                    if(u = "m² land"){
-		                        tick_resources_used[u] <- tick_resources_used[u] + surface_production_A[c];
-		
-		                        if(quantity_needed > surface_production_A[c]){
-		                            quantity_needed <- quantity_needed - surface_production_A[c];
-		                            surface_production_A[c] <- surface_production_A[c] + quantity_needed;
-		                        } else {
-		                            continue;
-		                        }
-		                    }
-		
-		                    tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
-		
-		                    map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
-		                    if not bool(info["ok"]) { ok <- false; }
-		                }
-		            }
-		
-		            loop e over: production_emissions_A{
-		                float quantity_emitted <- production_output_emissions_A[c][e] * deliver_remaining;
-		                tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
-		                do send_ges_to_ecosystem(tick_emissions[e]);
-		            }
-		
-		            // ---- PRODUCTION affichée = livré total ----
-		            tick_production[c] <- tick_production[c] + deliver;
-		
-		            // conso enregistrée (demande externe)
-		            tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + demand[c];
+	            }
+	            if(c = "kg_cotton"){
+	                additional_production <- float(application_fertilizer("kg_cotton"));
+	            }
+	
+	            // on borne : pas plus que ce qu'on veut livrer
+	            float additional_used <- min(additional_production, deliver);
+	
+	            // reste à produire "normalement" (livré)
+	            float deliver_remaining <- deliver - additional_used;
+					            
+	
+	            // ---- INPUTS / EMISSIONS sur la prod normale ----
+	            loop u over: production_inputs_A{
+	
+	                if(external_producers.keys contains u){
+	
+	                    float quantity_needed <- 0.0;
+	
+	                    if(u = "km/kg_scale_2"){
+	                    	// a modifier : là on envoie tout, y cormpris la surproduction
+	                        quantity_needed <- production_output_inputs_A[c][u] * deliver_remaining;
+								
+	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        if not bool(info["ok"]) { 
+	                        	float transmitted_transport <- float(info["transmitted_km/kg_scale_2"]);
+	                        	float ratio <- float(transmitted_transport/quantity_needed);
+	                        	deliver_remaining <- deliver_remaining*ratio;
+	                        	tick_resources_used[u] <- tick_resources_used[u] + transmitted_transport;
+	                        } else{
+	                        	tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+	                        }
+	                        continue;
+	                    }
+	
+	                    quantity_needed <- production_output_inputs_A[c][u] * deliver_remaining;
+	
+	                    if(u = "m² land"){
+	              
+	                        if(quantity_needed > surface_production_A[c]){
+	                            quantity_needed <- quantity_needed - surface_production_A[c];
+	                            surface_production_A[c] <- surface_production_A[c] + quantity_needed;
+	                        } else {
+	                            continue;
+	                        }
+	                        
+	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        if not bool(info["ok"]) { 
+	                        	float transmitted_land <- float(info["transmitted_m² land"]);
+	                        	float ratio <- float(transmitted_land/quantity_needed);
+	                        	deliver_remaining <- deliver_remaining*ratio;
+	                        	tick_resources_used[u] <- tick_resources_used[u] + transmitted_land;
+	                        } else{
+	                        	tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+	                        }
+	                        continue;
+	                      
+	                    }
+	                    
+	                    if(u = "L water"){
+	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        if not bool(info["ok"]) { 
+	                        	float transmitted_water <- float(info["transmitted_L water"]);
+	                        	float ratio <- float(transmitted_water/quantity_needed);
+	                        	deliver_remaining <- deliver_remaining*ratio;
+	                        	tick_resources_used[u] <- tick_resources_used[u] + transmitted_water;
+	                        } else{
+	                        	tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+	                        }
+	                        continue;
+	                      
+	                    }
+	                    
+	                    if(u = "kWh energy"){
+	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        write "info : " + info;
+	                        if not bool(info["ok"]) { 
+	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
+	                        	float ratio <- float(transmitted_energy/quantity_needed);
+	                        	deliver_remaining <- deliver_remaining*ratio;
+	                        	tick_resources_used[u] <- tick_resources_used[u] + transmitted_energy;
+	                        } else{
+	                        	tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+	                        }
+	                        continue;
+	                      
+	                    }
+
+	                }
 		        }
+		        
+		        loop e over: production_emissions_A{
+	                float quantity_emitted <- production_output_emissions_A[c][e] * deliver_remaining;
+	                tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
+	                do send_ges_to_ecosystem(tick_emissions[e]);
+	            }
+	
+	            tick_production[c] <- tick_production[c] + deliver;
+	            tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + demand[c];
+	            
+	            float deliver_real <- deliver_remaining + additional_used + from_stock;
+	            
+		        float surplus_production <- 0.0;
+		        if(demand[c] <= deliver_real){
+		        	res["ok"] <- true;
+		        } else {
+		        	res["ok"] <- false;
+		        }
+		        
+		        if(c = "kg_meat"){
+		        	res["transmitted_meat"] <- min(demand[c],deliver_real); 
+		        }
+		        if(c = "kg_vegetables"){
+		        	res["transmitted_vegetables"] <- min(demand[c],deliver_real); 
+		        }
+		        if(c = "kg_cotton"){
+		        	res["transmitted_cotton"] <- min(demand[c],deliver_real); 
+		        }
+		        
+		        tick_production[c] <- tick_production[c] + deliver_real;
+	            tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res[c]); 
 		    }
 		
-		    return ["ok"::ok];
+			write res;
+		    return res;
 		}
 
 		
