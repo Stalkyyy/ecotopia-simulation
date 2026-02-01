@@ -31,36 +31,28 @@ global {
     float surroundings_radius <- 2000.0;
     city city_agent;
     bus_system bus_agent;
+    //train_system train_agent; 
 
     // -----------------------
     // POPULATION
     // -----------------------
     int population_size <- 10000;	// Also the number of agents used
     float display_ratio <- 1.0; // set <1.0 to hide a fraction of the agents visually
+    bool debug_write <- population_size = 1; // debug when setting population size to 1
 
     // -----------------------
     // VEHICLE TYPES
     // -----------------------
-    list<string> vehicle_types <- ["walk", "bicycle", "mini_bus", "taxi"]; // truck and train not represented in this scale
+    list<string> vehicle_types <- ["walk", "bicycle", "mini_bus", "taxi", "train"];
 
     // km usage per tick per vehicle
-    map<string, float> km_usage <- [
-        "walk"::0.0,
-        "bicycle"::0.0,
-        "mini_bus"::0.0,
-        "taxi"::0.0
-    ];
+    map<string, float> km_usage <- vehicle_types as_map (each::0.0);
 
     // vehicles needed per tick
-    map<string, int> vehicles_needed <- [
-        "walk"::0,
-        "bicycle"::0,
-        "mini_bus"::0,
-        "taxi"::0
-    ];
+    map<string, int> vehicles_needed <- vehicle_types as_map (each::0);
     
     
-    map<string, int> max_vehicles_needed <- ["walk"::0, "bicycle"::0, "mini_bus"::0, "taxi"::0];
+    map<string, int> max_vehicles_needed <- vehicle_types as_map (each::0);
 
     // -----------------------
     // TRAIN STATION
@@ -116,6 +108,7 @@ global {
 	    float peak_taxis_per_1k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 1000.0;
 	    float peak_bikes_per_1k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 1000.0;
 	    float peak_minibus_fleet_per_1k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 1000.0;
+	    float peak_trains_fleet_per_1k <- (max_vehicles_needed["train"] / pop_size_safe) * 1000.0;
 	    
 	
 	    // header
@@ -125,6 +118,7 @@ global {
 	    save ["peak_taxis_per_1k", peak_taxis_per_1k_citizens] to: "city_profile.csv" rewrite: false;
 	    save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
 	    save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
+	    save ["peak_trains_fleet_per_1k", peak_trains_fleet_per_1k] to: "city_profile.csv" rewrite: false;
 	
 	    write "Simulation finished. Profile saved to city_profile.csv";
 	    do pause;
@@ -176,6 +170,7 @@ species citizen {
     init {
         home <- city_agent.get_random_position_in_city();
         work <- city_agent.get_random_position_in_city();
+        //write home;
         location <- home;
         visible_agent <- (rnd(1.0) <= display_ratio);
         
@@ -209,7 +204,7 @@ species citizen {
             
             weekly_plan[d] <- day_tasks;
         }
-        //write my_work_days + weekly_plan;
+        if debug_write {write my_work_days + weekly_plan;}
     }
     
     // executed everyday when the citizen wakes up, decides the time when he works/errand/loisir
@@ -228,7 +223,7 @@ species citizen {
         wake_up_hour <- int(max(6, min(11, gauss(9.0, 1.0))));
         float raw_bedtime <- gauss(23.5, 2.0);
         bed_time_hour <- int(max(20, raw_bedtime));
-        //write "bedtime: " + bed_time_hour;
+        if debug_write {write "bedtime: " + bed_time_hour;}
         if (bed_time_hour >= (wake_up_hour + 24)) { bed_time_hour <- wake_up_hour + 23; }
         
         // Work: 5h
@@ -242,7 +237,7 @@ species citizen {
                     break;
                 }
             }
-            //write "work: " + start_work_hour + " - " + end_work_hour;
+            if debug_write {write "work: " + start_work_hour + " - " + end_work_hour;}
         }
         
         // Errand: 1~2h
@@ -263,18 +258,18 @@ species citizen {
             if errand_start_hour = -1 {
             	write "[WARNING] Could not find place for errand ";
             }
-            //write "errand: " + errand_start_hour + " - " + errand_end_hour;
+            if debug_write {write "errand: " + errand_start_hour + " - " + errand_end_hour;}
         }
         
         // Leisure: 1~5h (2h avg)
         float leisure_roll <- rnd(1.0);
-        if (leisure_roll < 0.5) { leisure_type <- "external"; } // ignored in scale 3
+        if (leisure_roll < 0.5) { leisure_type <- "external"; }
         else if (leisure_roll < 0.8) { leisure_type <- "outskirts"; }
         else { leisure_type <- "home"; }
 
         loop i from: 1 to: 300 {
         	int dur <- int(min(max(1, gauss(2.0, 2.0))), 5);
-            int start_t <- int(gauss(17.0, 5.0)); // à 17h
+            int start_t <- int(gauss(17.0, 3.0)); // à 17h
             int end_t <- start_t + dur;
             
             if (start_t >= wake_up_hour and end_t <= bed_time_hour) {
@@ -291,12 +286,14 @@ species citizen {
         if leisure_start_hour = -1 {
         	write "[WARNING] Could not find place for leisure";
         }
-        //write "leisure: " + leisure_start_hour + " - " + leisure_end_hour;
+        if debug_write{write "leisure: " + leisure_start_hour + " - " + leisure_end_hour + ", type: " + leisure_type;}
         
         if (leisure_type = "outskirts") {
             float dist <- rnd(city_radius, surroundings_radius);
             float angle <- rnd(360.0);
             leisure_location <- {center.x + dist * cos(angle), center.y + dist * sin(angle)};
+        } else if (leisure_type = "external") { // we move to the train station (mini ville scale)
+        	leisure_location <- train_station;
         } else {
             leisure_location <- home;
         }
@@ -342,13 +339,21 @@ species citizen {
         if (leisure_type = "outskirts") {
             do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
             location <- leisure_location;
+        } else if (leisure_type = "external") {
+        	do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
+        	location <- point(rnd(2000.0)+1000, rnd(1000.0)+4200); // only train station distance, other location to visualize
         }
     }
     reflex end_leisure when: current_date.hour = leisure_end_hour and activity = "leisure" {
         activity <- "awake";
         if (location != home) {
-            do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
-            location <- home;
+        	if leisure_type = "external" { // we are outside (to visualize) but we should travel from the train station
+        		location <- leisure_location; // tp to train station first
+        		do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+        	} else {
+        		do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+            	location <- home;	
+        	}
         }
         leisure_location <- nil;
     }
@@ -378,6 +383,7 @@ species citizen {
     map<string, float> vehicle_usage (point start, point end, map<string, float> usage) {
     	// renvoie la quantité d'utilisation de chaque véhicule
     	// règles simples basées sur la distance pour déterminer le(s) véhicule(s) utilisé(s)
+    	
     	float distance <- distance_to(start, end);
     	// test si la distance est très courte -> marche à pied
     	if distance <= 100 {
@@ -643,6 +649,7 @@ experiment city_simulation type: gui {
                 string time_str <- "Day " + current_date.day + " - " + (current_date.hour < 10 ? "0" : "") + current_date.hour + ":00";
                 
                 draw time_str at: {100, 100} color: #black font: font("Helvetica", 80, #bold);
+                draw "Outside City" at: {1600, 5400} color: #black font: font("Helvetica", 20, #bold);
             }
         }
 
