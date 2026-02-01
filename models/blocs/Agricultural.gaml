@@ -120,6 +120,21 @@ global{
     list<string> seasons <- ["spring", "summer", "autumn", "winter"];
     int current_season <- 0;
     int cpt_tick <- 0;
+    
+    
+    /*map<string, float> seasonal_overproduction <- [
+	    "spring"::0.30,
+	    "summer"::0.10,
+	    "autumn"::0.15,
+	    "winter"::0.0
+	];
+	
+	map<string, float> seasonal_stock_use <- [
+	    "spring"::0.0,
+	    "summer"::0.2,
+	    "autumn"::0.1,
+	    "winter"::0.8
+	];*/
 	
 	
 	//469 000 000 kg de viande
@@ -173,6 +188,9 @@ species agricultural parent:bloc{
 		//do population_activity(pop);
 		
 		cpt_tick <- cpt_tick + 1;
+		if(cpt_tick mod 3 = 0){
+			current_season <- (current_season + 1) mod 4;
+		}
 		do production_fertilizer;
 	}
 	
@@ -386,9 +404,9 @@ species agricultural parent:bloc{
 	action vegetables_losses(float qtte){
 		float tot_losses <- qtte/without_pesticide_vegetables;
 		
-		if(cpt_tick mod 3 = 0){
+		/*if(cpt_tick mod 3 = 0){
 			current_season <- (current_season + 1) mod 4;
-		}
+		}*/
 		
 		string season_name <- seasons[current_season];
 		float season_factor <- float(production_seasons[season_name]);
@@ -401,9 +419,9 @@ species agricultural parent:bloc{
 	action cotton_losses(float qtte){
 		float tot_losses <- qtte/without_pesticide_cotton;
 		
-		if(cpt_tick mod 3 = 0){
+		/*if(cpt_tick mod 3 = 0){
 			current_season <- (current_season + 1) mod 4;
-		}
+		}*/
 		
 		string season_name <- seasons[current_season];
 		float season_factor <- float(production_seasons[season_name]);
