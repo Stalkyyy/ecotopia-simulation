@@ -7,6 +7,7 @@
 model Demography
 
 import "../API/API.gaml"
+import "MiniVille.gaml"
 
 /**
  * We define here the global variables of the bloc. Some are needed for the displays (charts, series...).
@@ -77,12 +78,49 @@ global{
 	list<float> seasonal_death_coeffs <- [1.08, 1.069, 1.04, 1.0, 0.96, 0.931, 0.92, 0.931, 0.96, 1.0, 1.04, 1.069];
 	float coeff_death_seasonal <- 1.0;
 	
+	geometry shape <- square(2000#m);
+	
 	init{  
-		// a security added to avoid launching an experiment without the other blocs
+		write "[Demography] Global Init. Coordinator: " + length(coordinator) + " | MVs: " + length(mini_ville);
+
+		// Standalone execution handling:
 		if (length(coordinator) = 0){
-			error "Coordinator agent not found. Ensure you launched the experiment from the Main model";
-			// If you see this error when trying to run an experiment, this means the coordinator agent does not exist.
-			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
+			write "[Demography] Standalone Mode: No Coordinator found. Initializing dependencies...";
+			
+			// FIX: Manually initialize MiniVille global variables to prevent division by zero during agent init
+			// This is necessary because imported global variables might default to 0 if the imported model's global init isn't triggered fully.
+			if (area_per_unit_default = 0.0) { area_per_unit_default <- 70.0; }
+			if (total_area_per_ville = 0.0) { total_area_per_ville <- 2e6; }
+			if (buildable_ratio = 0.0) { buildable_ratio <- 0.4; }
+			if (initial_fill_ratio = 0.0) { initial_fill_ratio <- 0.2; }
+			
+			// 1. Create dummy mini_villes for spatial visualization
+			if (empty(mini_ville)) {
+				write "[Demography] Creating 550 dummy mini_villes per configuration...";
+				create mini_ville number: 550 with: [location::{0,0,0}]; 
+			}
+			
+			// 2. Create and setup the residents agent (Manager) if it doesn't exist
+			if (empty(residents)) {
+				write "[Demography] Creating residents agent...";
+				create residents number: 1 {
+					do setup;
+				}
+			}
+		}
+	}
+	
+	// Reflex to drive the simulation when there is no coordinator (Main model) to call us
+	reflex standalone_driver when: empty(coordinator) {
+		// Recovery: Ensure MiniVilles exist (fix for missing initialization)
+		if (empty(mini_ville)) {
+			write "[Demography] RECOVERY: Creating 550 MiniVilles in reflex loop.";
+			create mini_ville number: 550 with: [location::{0,0,0}]; 
+		}
+		
+		ask residents {
+			// Pass all individuals to the tick function
+			do tick(list(individual));
 		}
 	}
 	
@@ -118,6 +156,8 @@ species residents parent:bloc{
 		create residents_consumer number:1 returns:consumers;
 		producer <- first(producers);
 		consumer <- first(consumers);
+		
+		do update_miniville_populations;
 	}
 	
 	/* updates the population every tick */
@@ -147,6 +187,8 @@ species residents parent:bloc{
 			do update_food_demand;
 			do update_water_demand;
 			do update_housing_demand; // Enabled housing demand update
+			
+			do update_miniville_populations;
 		}
 		// write "tick" + last_consumed;
 	}
@@ -202,6 +244,17 @@ species residents parent:bloc{
         ask producer {
             do set_supplier(product, bloc_agent);
         }
+    }
+    
+    action update_miniville_populations {
+		ask mini_ville {
+			population_count <- 0;
+		}
+		ask individual {
+			if (home != nil) {
+				home.population_count <- home.population_count + pop_per_ind;
+			}
+		}
     }
     
     action update_food_demand {
@@ -748,12 +801,18 @@ species residents parent:bloc{
 	int ticks_before_birthday <- 0;
 	int delay_next_child <- 0;
 	int child <- 0;
+	mini_ville home <- nil;
 	
 	int ticks_counter <- 0;
 	
 	init{
 		gender <- one_of ([female_gender, male_gender]); // pick a gender randomly
 	    ticks_before_birthday <- rnd(nb_ticks_per_year); // set a random birth date in the year (uniformly)
+	    
+	    if (home = nil and not empty(mini_ville)) {
+	    	home <- one_of(mini_ville);
+	    }
+	    
 	    // set initial birth & death probabilities :
 	    p_birth <- get_p_birth(); 
 		p_death <- get_p_death();
