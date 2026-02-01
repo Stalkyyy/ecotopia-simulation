@@ -25,14 +25,13 @@ global{
 	float distance <- 50.0;
 	
 	/* Parameter to simulate production without pesticide */
-	float without_pesticide_vegetables <- 74.0/41.0;
-	float without_pesticide_cotton <- 84.0/38.0;
+	float without_pesticide <- 1.35; // 35% additional production because of no pesticide
 	
 	/* Production data */
 	map<string, map<string, float>> production_output_inputs_A <- [
 		"kg_meat"::["L water"::8576.0, "kWh energy"::10.0, "m² land"::12.8, "km/kg_scale_2"::distance],
-		"kg_vegetables"::["L water"::425.0*without_pesticide_vegetables, "kWh energy"::0.5*without_pesticide_vegetables, "m² land"::0.47*without_pesticide_vegetables, "km/kg_scale_2"::distance],
-		"kg_cotton"::["L water"::10000.0*without_pesticide_cotton, "kWh energy"::0.2*without_pesticide_cotton, "m² land"::13.3*without_pesticide_cotton, "km/kg_scale_2"::distance]
+		"kg_vegetables"::["L water"::425.0*without_pesticide, "kWh energy"::0.5*without_pesticide, "m² land"::0.47*without_pesticide, "km/kg_scale_2"::distance],
+		"kg_cotton"::["L water"::10000.0*without_pesticide, "kWh energy"::0.2*without_pesticide, "m² land"::13.3*without_pesticide, "km/kg_scale_2"::distance]
 	];
 	map<string, map<string, float>> production_output_emissions_A <- [
 		"kg_meat"::["gCO2e emissions"::12.6],
@@ -86,7 +85,7 @@ global{
 	
 	/* Parameters for hunting */
 	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
-	float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
+	//float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
 	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
     float hunted_animals_kg <- 0.0;
@@ -96,17 +95,19 @@ global{
     float kg_fertilizer_per_m2 <- 3.0;
     float fertilizer_yield_increase <- 0.3;  
     
-    float manure_produced_per_kg_meat <- 20.0; // A REVOIR (calculs)
-    //float loss_per_kg_vegetables <- 10.0; // A REVOIR (calculs) <- est ce réellement utile ? on prend les pertes dues au manque de pesticides non ?
-    int time_transform_waste_to_fertilizer <- 4; // A REVOIR -> chercher la donnée
+    float manure_produced_per_kg_meat <- 15.0;
+    int time_transform_waste_to_fertilizer <- 4;
     float recycling_percentage <- 0.99;
     float vegetables_to_fertilizer_percentage <- 0.3;
-    float manure_to_fertilizer_percentage <- 0.5;
+    float manure_to_fertilizer_percentage <- 0.05;
     
-    float production_emissions_fertilizer <- 1.2; // A REVOIR -> retrouver le lien
+    float production_emissions_fertilizer <- 1.2;
+    float CO2_fermentation <- 0.15;
+    float CO2_production <- 0.05;
+    float CO2_emission <- 0.01;
     
     //map<float,int> time_to_fertilize <- [];
-    list<map> fertilizer_batches <- [];  // chaque élément: ["kg"::..., "t"::...]
+    list<map> fertilizer_batches <- [];
     
     
     float kg_fertilizer_available <- 0.0;
@@ -178,12 +179,12 @@ species agricultural parent:bloc{
 	}
 	
 	action tick(list<human> pop) {
-		
-		write "nouveau tick";
-		
+				
 		do collect_last_tick_data();
 		
 		//do population_activity(pop);
+		
+		write seasons[current_season];
 
 		if (cpt_tick mod 3 = 0) {
 	        current_season <- (current_season + 1) mod length(seasons);
@@ -233,7 +234,7 @@ species agricultural parent:bloc{
 	    	//write "demandes : " + tick_demand_A;
 	    	//write "produit : " + tick_production_A;
 	    	
-	    	production_this_tick <- copy(tick_production_A);
+	    	//production_this_tick <- copy(tick_production_A);
 	    	do production_fertilizer;
 	    	
 	    	// aging of stock
@@ -400,8 +401,7 @@ species agricultural parent:bloc{
 		
 		// transformation into fertilizer
 		float kg_fertilizer <- float(tranformation_into_fertilizer(kg_losses, kg_manure));
-		
-		
+				
 		//write "fertilizer " + kg_fertilizer;
 		// VOIR OU METTRE LE CO2 CREE
 		//tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + (production_emissions_fertilizer * kg_fertilizer);
@@ -433,12 +433,11 @@ species agricultural parent:bloc{
 		    fertilizer_batches << ["kg"::kg_fertilizer, "t"::time_transform_waste_to_fertilizer];
 		}
 		
-
 	}
 	
 	
 	action vegetables_losses(float qtte){
-	    float tot_losses <- qtte/without_pesticide_vegetables;
+	    float tot_losses <- qtte/without_pesticide;
 	
 	    string season_name <- seasons[current_season];
 	    float season_factor <- float(production_seasons[season_name]);
@@ -452,7 +451,7 @@ species agricultural parent:bloc{
 	}
 	
 	action cotton_losses(float qtte){
-	    float tot_losses <- qtte/without_pesticide_cotton;
+	    float tot_losses <- qtte/without_pesticide;
 	
 	    string season_name <- seasons[current_season];
 	    float season_factor <- float(production_seasons[season_name]);
@@ -464,12 +463,13 @@ species agricultural parent:bloc{
 	
 	    return tot_losses * recycling_percentage;
 	}
-
-	
 	
 	action manure_production{
-		float kg_animals_tot <- production_output_inputs_A["kg_meat"]["m² land"] * surface_production_A["kg_meat"];
-		float manure_tot <- kg_animals_tot *  manure_produced_per_kg_meat;
+		float m2_used <- surface_production_A["kg_meat"];
+		float m2_per_kg <- production_output_inputs_A["kg_meat"]["m² land"];
+		
+		float kg_meat_2 <- m2_used / max(m2_per_kg, 1e-9);
+		float manure_tot <- kg_meat_2 * manure_produced_per_kg_meat;
 		return manure_tot * recycling_percentage; 
 	}
 	
@@ -535,6 +535,10 @@ species agricultural parent:bloc{
 				tick_demand[e] <- 0.0;
 			}
 			
+			loop e over:production_this_tick.keys(){
+				production_this_tick[e] <- 0.0;
+			}
+			
 			// reset of hunted animals
 			hunted_animals <- 0;
 			hunted_animals_kg <- 0.0;
@@ -574,10 +578,6 @@ species agricultural parent:bloc{
 	            // livré visé (surproduction)
 	            //float deliver <- to_produce * (1 + overproduction_factor);
 	            float deliver <- to_produce * (1 + seasonal_overprod);
-	            
-				ask one_of(agricultural) {
-					production_this_tick[c] <- production_this_tick[c] + deliver;
-				}
 
 	            // aide (chasse / engrais) = livré
 	            float additional_production <- 0.0;
@@ -665,7 +665,6 @@ species agricultural parent:bloc{
 	                    
 	                    if(u = "kWh energy"){
 	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
-	                        write "info : " + info;
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
 	                        	float ratio <- float(transmitted_energy/quantity_needed);
@@ -681,18 +680,19 @@ species agricultural parent:bloc{
 	                }
 		        }
 		        
+		        ask one_of(agricultural) {
+					production_this_tick[c] <- production_this_tick[c] + deliver_remaining;
+				}
+		        
 		        loop e over: production_emissions_A{
 	                float quantity_emitted <- production_output_emissions_A[c][e] * deliver_remaining;
 	                tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
 	                do send_ges_to_ecosystem(tick_emissions[e]);
 	            }
 	
-	            tick_production[c] <- tick_production[c] + deliver;
-	            tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + demand[c];
 	            
 	            float deliver_real <- deliver_remaining + additional_used + from_stock;
 	            
-		        float surplus_production <- 0.0;
 		        if(demand[c] <= deliver_real){
 		        	res["ok"] <- true;
 		        } else {
@@ -701,28 +701,36 @@ species agricultural parent:bloc{
 		        
 		        if(c = "kg_meat"){
 		        	res["transmitted_meat"] <- min(demand[c],deliver_real); 
+		        	tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res["transmitted_meat"]); 
 		        }
 		        if(c = "kg_vegetables"){
 		        	res["transmitted_vegetables"] <- min(demand[c],deliver_real); 
+		        	tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res["transmitted_vegetables"]); 
 		        }
 		        if(c = "kg_cotton"){
 		        	res["transmitted_cotton"] <- min(demand[c],deliver_real); 
+		        	tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res["transmitted_cotton"]); 
 		        }
 		        
-		        tick_production[c] <- tick_production[c] + deliver_real;
-	            tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res[c]); 
+		        tick_production[c] <- tick_production[c] + deliver_real;	            
 		    }
 		
-			write res;
+			//write res;
 		    return res;
 		}
 
 		
 		action hunting(float demand){
-			float kg_animal_to_hunt <- demand * hunting_over_farm;
+			/*float kg_animal_to_hunt <- demand * hunting_over_farm;
 			float max_kg_hunted <- hunted_per_month * kg_per_animal;
 			float hunted_kg <- min(kg_animal_to_hunt, max_kg_hunted);
-			hunted_animals_kg <- hunted_kg;
+			hunted_animals_kg <- hunted_kg;*/
+			float animals_needed <- demand / kg_per_animal;
+		    float animals_obtained <- 0.0;
+		    ask ecosystem {
+		        animals_obtained <- hunt_request(animals_needed);
+		    }
+		    hunted_animals_kg <- animals_obtained * kg_per_animal;
 		}	
 		
 		
@@ -739,7 +747,7 @@ species agricultural parent:bloc{
 			} else {
 				kg_fertilizer_available <- 0.0;	
 			}
-			
+						
 			float m2_per_kg_type <- production_output_inputs_A[type]["m² land"];
 			float kg_type_with_fertilizer <- nb_m2_with_fertilizer * m2_per_kg_type;
 			float additional_yield <- kg_type_with_fertilizer * fertilizer_yield_increase;
