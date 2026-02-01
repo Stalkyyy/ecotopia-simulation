@@ -64,7 +64,7 @@ global{
 			"distance_max_per_tick"::8300
 		],
 		"minibus"::[
-			"quantity"::94000,
+//			"quantity"::94000,
 			"capacity"::6, // (people)
 			"capacity_std"::0.5, // varies slightly between months
 			"consumption"::0.33,
@@ -75,7 +75,7 @@ global{
 			"distance_max_per_tick"::5000
 		],
 		"bicycle"::[
-			"quantity"::31464000,
+//			"quantity"::31464000,
 			"capacity"::1, // (people)
 			"capacity_std"::0.05, // mostly similar between months (there can be multiple people riding)
 			"consumption"::0.001,
@@ -86,7 +86,7 @@ global{
 			"distance_max_per_tick"::900
 		],
 		"walk"::[
-			"quantity"::500000000, // large ceiling
+//			"quantity"::500000000, // large ceiling
 			"capacity"::1,
 			"capacity_std"::0,
 			"consumption"::0,
@@ -102,7 +102,7 @@ global{
 		"km/person_scale_1" :: ["train"::1.0],
 		"km/kg_scale_1"     :: ["truck"::1.0],
 		
-		"km/person_scale_2" :: ["train"::0.95, "taxi"::0.04, "walk"::0.01],
+		"km/person_scale_2" :: ["train"::0.95, "taxi"::0.04, "walk"::0.0],
 		"km/kg_scale_2"     :: ["truck"::1.0], 
 		
 		"km/person_scale_3" :: ["walk"::0.20, "taxi"::0.05, "bicycle"::0.40, "minibus"::0.35],
@@ -112,8 +112,8 @@ global{
 	/* Consumption data */
 	map<string, float> individual_consumption_T <- [
 		"km/person_scale_1"::1636.0,
-		"km/person_scale_2"::1520.0,
-		"km/person_scale_3"::47.2
+		"km/person_scale_2"::1520.0
+//		"km/person_scale_3"::47.2
 		//"km/kg_scale_1"::0, none since it's the population consumption
 		//"km/kg_scale_2"::0,
 		//"km/kg_scale_3"::0
@@ -215,6 +215,10 @@ species transport parent:bloc{
 	// then we calculate the consumption in transports for the population (we do it in this bloc)
 	action tick(list<human> pop, list<mini_ville> cities){
 		do collect_last_tick_data();
+
+		do update_city_vehicles(cities);
+		do city_population_activity(cities);		
+
 		do update_vehicle_numbers();
 		do population_activity(pop);
 	}
@@ -321,7 +325,6 @@ species transport parent:bloc{
 	// creates new vehicles, for now no resources used, just energy
 	//TODO: resources in MICRO
 	map<string, unknown> create_new_vehicles(string type, int quantity){
-		//write("new " + type+" : "+quantity);
 		if not(type in vehicles){
 			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
 			return;
@@ -382,8 +385,130 @@ species transport parent:bloc{
 		    }
     	}
     }
+    
+    
+    
+    
+    
+	// vvv CITY CODE vvv
+    map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
+		// TODO: find the correct starting quantities for 10k people cities from 
+		"taxi"::20,		// TODO : obtained from the Scale3 simulation
+		"minibus"::25,	// TODO : obtained from the Scale3 simulation
+		"bicycle"::1500	// TODO : obtained from the Scale3 simulation
+	];
 	
-	
+    
+    map<string, int> get_required_vehicles_per_tick(int population) {
+    	map<string, int> required_vehicles_this_tick <- [];
+    	float ratio <- population / 10000;
+    	required_vehicles_this_tick["taxi"] <- required_vehicles_per_tick_for_10k_citizens["taxi"] * ratio;
+    	required_vehicles_this_tick["minibus"] <- required_vehicles_per_tick_for_10k_citizens["minibus"] * ratio;
+    	required_vehicles_this_tick["bicycle"] <- required_vehicles_per_tick_for_10k_citizens["bicycle"] * ratio;
+    	return required_vehicles_this_tick;
+    }
+    
+    bool create_new_vehicles_city(string type, int quantity){
+		// similar to the old one, but for cities, so it only returns if it's success or not, it doesn't create them directly
+		if not(type in vehicles){
+			warn("(TRANSPORT) : attempted creation of unrecognized vehicle");
+			return;
+		}
+		
+		float required_cotton <- quantity * vehicle_data[type]["plastic_weight"];
+		float required_energy <- quantity * vehicle_data[type]["creation_energy"] + required_cotton * kWh_per_kg_plastic;
+		// ask for energy
+		ask transport_producer{			
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
+			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::required_cotton]);
+			if not bool(infoEner["ok"]) {
+				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
+				return false;
+			} else if not bool(infoAgri["ok"]) {
+				write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
+				return false;
+			}
+			tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + required_energy;
+			tick_resources_used["kg_cotton"] <- producer.tick_resources_used["kg_cotton"] + required_cotton;
+		}
+		// tracking vehicles created
+		vehicles_created[type] <- vehicles_created[type] + quantity;
+		
+		return true;
+	}
+    
+	action update_city_vehicles(list<mini_ville> cities) {
+		list<string> city_vehicles <- ["taxi", "minibus", "bicycle"];
+		loop c over: cities {
+			// update the age of the city vehicles
+    		loop v over:city_vehicles{
+				// NOTE : removed the variation in aging at each tick because it would be super computationally heavy to loop through all lifetime ticks for every single city (went back to the original code where we just remove the last (oldest) entry and add a new entry with 0 vehicles (O(1)))
+				// get the number of vehicles removed this tick
+				int vehicles_removed <- last(c.vehicles_age[v]);
+				// reduce the total amount of vehicles known
+				c.number_of_vehicles[v] <- c.number_of_vehicles[v] - vehicles_removed;
+				// remove the oldest vehicles from the lifespan list
+				remove from:c.vehicles_age[v] index:length(c.vehicles_age[v])-1;
+				// add 0 new vehicles at tick 0 age
+				add item:0 to: c.vehicles_age[v] at: 0;
+			}
+			// check if there are enough vehicles for the amount of population of the city
+			map<string, int> required_vehicles_this_tick <- get_required_vehicles_per_tick(c.population_count);
+			loop v over:city_vehicles{
+				int required_vehicles <- required_vehicles_this_tick[v] - c.number_of_vehicles[v];
+				if required_vehicles > 0 {
+					// need to create more vehicles
+					bool success <- create_new_vehicles_city(v, required_vehicles);
+					write "TRANSPORT : created " + required_vehicles + " " + v +"vehicles for city";
+					c.vehicles_age[v][0] <- c.vehicles_age[v][0] + required_vehicles;
+					c.number_of_vehicles[v] <- c.number_of_vehicles[v] + required_vehicles;
+				}
+			}
+		}
+	}
+	action city_population_activity(list<mini_ville> cities) {
+	   	list<string> city_vehicles <- ["walk", "taxi", "minibus", "bicycle"];
+		loop c over: cities {
+			// create/use population transport ressources based on the number of people in the city and the use per tick of each vehicle per citizen
+			int population <- c.population_count;
+			loop v over: city_vehicles {
+				map<string, float> specs <- vehicle_data[v];
+				float km_per_tick_per_person <- c.vehicle_data[v]["km_per_tick_per_person"];
+				float distance_travelled <- km_per_tick_per_person * population;
+				float energy_needed <- (distance_travelled * specs["consumption"]);
+
+				// ask for energy
+				ask transport_producer{
+					map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::energy_needed]);
+					if not bool(infoEner["ok"]) {
+						write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
+						return false;	// TODO: do we just quit in case of not getting the required energy
+					}
+					tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_needed;
+				}
+
+				// track production and usage
+				ask transport_producer{
+					tick_production["km/person_scale_1"] <- tick_production["km/person_scale_1"] + distance_travelled;
+					tick_vehicle_usage[v] <- tick_vehicle_usage[v] + distance_travelled;
+				}
+
+				// GES
+				float emissions <- distance_travelled * specs["emissions"];
+				producer.tick_emissions["gCO2e emissions"] <- producer.tick_emissions["gCO2e emissions"] + emissions;
+				ask transport_producer{
+					do send_ges_to_ecosystem(emissions);
+				}
+			}
+		}
+	}
+    	
+    	// ^^^ CITY CODE ^^^
+    	
+    	
+    	
+    	
+    	
 	/**
 	 * Agent qui s'occupe de toutes les production du bloc
 	 * (I don't know if in the future there will be multiple of this agent for each scale,
