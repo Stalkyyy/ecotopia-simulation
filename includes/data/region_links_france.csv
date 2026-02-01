@@ -1,0 +1,24 @@
+source,target
+Hauts-de-France,Ile-de-France
+Hauts-de-France,Normandie
+Hauts-de-France,Grand Est
+Normandie,Bretagne
+Normandie,Pays de la Loire
+Normandie,Ile-de-France
+Normandie,Centre-Val de Loire
+Ile-de-France,Grand Est
+Ile-de-France,Centre-Val de Loire
+Ile-de-France,Bourgogne-Franche-Comté
+Bretagne,Pays de la Loire
+Grand Est,Bourgogne-Franche-Comté
+Pays de la Loire,Nouvelle-Aquitaine
+Pays de la Loire,Centre-Val de Loire
+Centre-Val de Loire,Bourgogne-Franche-Comté
+Centre-Val de Loire,Nouvelle-Aquitaine
+Centre-Val de Loire,Auvergne-Rhône-Alpes
+Nouvelle-Aquitaine,Occitanie
+Nouvelle-Aquitaine,Auvergne-Rhône-Alpes
+Occitanie,Auvergne-Rhône-Alpes
+Occitanie,Provence-Alpes-Côte d'Azur
+Auvergne-Rhône-Alpes,Provence-Alpes-Côte d'Azur
+Bourgogne-Franche-Comté,Auvergne-Rhône-Alpes
