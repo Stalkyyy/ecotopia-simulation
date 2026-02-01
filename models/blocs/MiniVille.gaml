@@ -44,7 +44,7 @@ species mini_ville {
 	float housing_capacity <- 0.0;
 	float remaining_buildable_area <- buildable_area;
 
-	// --- Construction pipeline (v1: single active order) ---
+	// --- Construction pipeline ---
 	string construction_state <- "idle"; // idle | waiting_resources | building
 
 	int pending_wood_units <- 0;

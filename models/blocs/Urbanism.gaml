@@ -48,6 +48,11 @@ global{
 	int max_builds_started_per_tick <- 50; // cap number of mini-villes that can transition to 'building' per tick
 	int builds_started_count_tick <- 0; // debug + gating for max_builds_started_per_tick
 
+	// Two-phase diagnostics (no API changes)
+	int tick_can_checks <- 0;
+	int tick_can_fails <- 0;
+	int tick_commit_fails <- 0;
+
 	// Debug / diagnostics
 	bool prev_totals_initialized <- false;
 	int prev_total_units <- 0;
@@ -148,6 +153,12 @@ species urbanism parent: bloc{
 	action tick(list<human> pop, list<mini_ville> cities){
 		do reset_tick_counters;
 		ask producer { do reset_tick_counters; }
+
+		// Reset per-tick diagnostics
+		builds_started_count_tick <- 0;
+		tick_can_checks <- 0;
+		tick_can_fails <- 0;
+		tick_commit_fails <- 0;
 
 		// Always sync first (single source of truth = mini-villes)
 		do sync_from_cities(cities);
@@ -301,7 +312,19 @@ species urbanism parent: bloc{
 		// Enforce per-tick cap on starts (prevents 'instant mass build' artifacts at scale)
 		if(builds_started_count_tick >= max_builds_started_per_tick){ return false; }
 
+		// Dry-run feasibility check (no API changes): only if the producer is our urban_producer
+		urban_producer up <- urban_producer(producer);
+		if(up != nil){
+			tick_can_checks <- tick_can_checks + 1;
+			map<string, unknown> can_info <- up.can_produce(c.pending_demand);
+			if(!bool(can_info["ok"])) {
+				tick_can_fails <- tick_can_fails + 1;
+				return false;
+			}
+		}
+
 		map<string, unknown> info <- producer.produce(c.pending_demand);
+		if(!bool(info["ok"])) { tick_commit_fails <- tick_commit_fails + 1; }
 		if(bool(info["ok"])) {
 			ask c { do start_build; }
 			builds_started_count_tick <- builds_started_count_tick + 1;
@@ -466,7 +489,62 @@ species urban_producer parent: production_agent{
 		return tick_emissions;
 	}
 
+	
+	// Dry-run feasibility check (no side effects). Does NOT require API.gaml changes.
+	map<string, unknown> can_produce(map<string, float> demand){
+		bool ok <- true;
+
+		// Non-ecosystem resources: we can only validate presence of a supplier (unless sub-blocs expose their own checks).
+		loop r over: demand.keys{
+			float qty <- demand[r];
+			if(qty <= 0.0){ continue; }
+			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
+			if(!(external_producers.keys contains r)){
+				ok <- false;
+			}
+		}
+
+		// Ecosystem resources: we can safely pre-check stocks (land/wood/water) without consuming anything.
+		map<string, float> eco_demand <- [];
+		if("m² land" in demand.keys and demand["m² land"] > 0.0){ eco_demand["m² land"] <- demand["m² land"]; }
+		if("kg wood" in demand.keys and demand["kg wood"] > 0.0){ eco_demand["kg wood"] <- demand["kg wood"]; }
+		if("L water" in demand.keys and demand["L water"] > 0.0){ eco_demand["L water"] <- demand["L water"]; }
+
+		if(length(eco_demand) > 0){
+			if(length(ecosystem) = 0){
+				ok <- false;
+			} else {
+				// Check we have an ecosystem supplier bloc registered
+				bloc eco_bloc <- nil;
+				if(external_producers.keys contains "m² land"){ eco_bloc <- external_producers["m² land"]; }
+				else if(external_producers.keys contains "kg wood"){ eco_bloc <- external_producers["kg wood"]; }
+				else if(external_producers.keys contains "L water"){ eco_bloc <- external_producers["L water"]; }
+				if(eco_bloc = nil){
+					ok <- false;
+				} else {
+					float land_av <- 0.0;
+					float wood_av <- 0.0;
+					float water_av <- 0.0;
+					ask one_of(ecosystem){
+						land_av <- land_stock;
+						wood_av <- wood_stock_kg;
+						water_av <- water_stock_l;
+					}
+					if("m² land" in eco_demand.keys and eco_demand["m² land"] > land_av){ ok <- false; }
+					if("kg wood" in eco_demand.keys and eco_demand["kg wood"] > wood_av){ ok <- false; }
+					if("L water" in eco_demand.keys and eco_demand["L water"] > water_av){ ok <- false; }
+				}
+			}
+		}
+
+		return ["ok"::ok];
+	}
+
 	map<string, unknown> produce(map<string, float> demand){
+		// Two-phase: dry-run feasibility check before consuming anything
+		map<string, unknown> pre <- can_produce(demand);
+		if(!bool(pre["ok"])) { return ["ok"::false]; }
+
 		bool ok <- true;
 		list<string> processed <- [];
 
@@ -608,6 +686,12 @@ experiment run_urbanism type: gui {
 				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
 				data "building" value: mini_ville count (each.construction_state = "building");
 
+			}
+
+			chart "Feasibility debug" type: series size: {1.0,0.5} position: {0, 0.5} {
+				data "can_checks" value: tick_can_checks;
+				data "can_fails" value: tick_can_fails;
+				data "commit_fails" value: tick_commit_fails;
 			}
 		}
 
