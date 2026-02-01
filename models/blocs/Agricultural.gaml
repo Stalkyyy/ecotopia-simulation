@@ -86,7 +86,7 @@ global{
 	
 	/* Parameters for hunting */
 	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
-	float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
+	//float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
 	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
     float hunted_animals_kg <- 0.0;
@@ -719,11 +719,17 @@ species agricultural parent:bloc{
 
 		
 		action hunting(float demand){
-			float kg_animal_to_hunt <- demand * hunting_over_farm;
+			/*float kg_animal_to_hunt <- demand * hunting_over_farm;
 			float max_kg_hunted <- hunted_per_month * kg_per_animal;
 			float hunted_kg <- min(kg_animal_to_hunt, max_kg_hunted);
-			hunted_animals_kg <- hunted_kg;
-		}	
+			hunted_animals_kg <- hunted_kg;*/
+			float animals_needed <- demand / kg_per_animal;
+		    float animals_obtained <- 0.0;
+		    ask ecosystem {
+		        animals_obtained <- hunt_request(animals_needed);
+		    }
+		    hunted_animals_kg <- animals_obtained * kg_per_animal;
+		}
 		
 		
 		action application_fertilizer(string type){
