@@ -131,6 +131,21 @@ global{
     list<string> seasons <- ["spring", "summer", "autumn", "winter"];
     int current_season <- 0;
     int cpt_tick <- 0;
+    
+    /*map<string, float> seasonal_overproduction <- [
+	    "spring"::0.30,
+	    "summer"::0.10,
+	    "autumn"::0.15,
+	    "winter"::0.0
+	];
+	
+	map<string, float> seasonal_stock_use <- [
+	    "spring"::0.0,
+	    "summer"::0.2,
+	    "autumn"::0.1,
+	    "winter"::0.8
+	];*/
+    
 	
 	
 	//469 000 000 kg de viande
@@ -534,24 +549,21 @@ species agricultural parent:bloc{
 					    production_this_tick[c] <- production_this_tick[c] + deliver;
 					}
 
-					
-		            float augmented_demand <- 0.0;
 		
 		            // aide (chasse / engrais) = livré
 		            float additional_production <- 0.0;
 		
 		            if(c = "kg_meat"){
 		                do hunting(deliver);
-		                //additional_production <- hunted_animals_kg;
-		                additional_production <- min(hunted_animals_kg, augmented_demand);
+		                additional_production <- hunted_animals_kg;
 		            }
 		            if(c = "kg_vegetables"){
 		                //additional_production <- float(application_fertilizer("kg_vegetables"));
-						additional_production <- min(float(application_fertilizer("kg_vegetables")), augmented_demand);
+						additional_production <- float(application_fertilizer("kg_vegetables"));
 
 		            }
 		            if(c = "kg_cotton"){
-		                additional_production <- min(float(application_fertilizer("kg_cotton")), augmented_demand);
+		                additional_production <- float(application_fertilizer("kg_cotton"));
 		            }
 		
 		            // on borne : pas plus que ce qu'on veut livrer
