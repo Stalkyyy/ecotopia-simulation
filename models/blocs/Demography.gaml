@@ -1003,6 +1003,17 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 			}
 			
 		}
+
+		display MiniVille_Distribution_6 {
+			chart "MiniVille Population Sample" type: histogram background: #white {
+				data "MV 0" value: (length(mini_ville) > 0) ? mini_ville[0].population_count : 0 color: #blue;
+				data "MV 100" value: (length(mini_ville) > 100) ? mini_ville[100].population_count : 0 color: #red;
+				data "MV 200" value: (length(mini_ville) > 200) ? mini_ville[200].population_count : 0 color: #green;
+				data "MV 300" value: (length(mini_ville) > 300) ? mini_ville[300].population_count : 0 color: #purple;
+				data "MV 400" value: (length(mini_ville) > 400) ? mini_ville[400].population_count : 0 color: #orange;
+				data "MV 500" value: (length(mini_ville) > 500) ? mini_ville[500].population_count : 0 color: #cyan;
+			}
+		}
 		
 		/* 
 		display MiniVille_Distribution type: java2D { 
