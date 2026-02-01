@@ -83,29 +83,26 @@ global{
 	init{  
 		write "[Demography] Global Init. Coordinator: " + length(coordinator) + " | MVs: " + length(mini_ville);
 
-		// Standalone execution handling:
-		if (length(coordinator) = 0){
-			write "[Demography] Standalone Mode: No Coordinator found. Initializing dependencies...";
+		// Robust Initialization Check:
+		// We ignore the coordinator existence check because we clearly need MiniVilles if they don't exist yet.
+		if (empty(mini_ville)){
+			write "[Demography] No MiniVilles found. Initializing dependencies...";
 			
-			// FIX: Manually initialize MiniVille global variables to prevent division by zero during agent init
-			// This is necessary because imported global variables might default to 0 if the imported model's global init isn't triggered fully.
+			// FIX: Manually initialize MiniVille global variables just in case
 			if (area_per_unit_default = 0.0) { area_per_unit_default <- 70.0; }
 			if (total_area_per_ville = 0.0) { total_area_per_ville <- 2e6; }
 			if (buildable_ratio = 0.0) { buildable_ratio <- 0.4; }
 			if (initial_fill_ratio = 0.0) { initial_fill_ratio <- 0.2; }
 			
-			// 1. Create dummy mini_villes for spatial visualization
-			if (empty(mini_ville)) {
-				write "[Demography] Creating 550 dummy mini_villes per configuration...";
-				create mini_ville number: 550 with: [location::{0,0,0}]; 
-			}
-			
-			// 2. Create and setup the residents agent (Manager) if it doesn't exist
-			if (empty(residents)) {
-				write "[Demography] Creating residents agent...";
-				create residents number: 1 {
-					do setup;
-				}
+			write "[Demography] Creating 550 dummy mini_villes per configuration...";
+			create mini_ville number: 550 with: [location::{0,0,0}]; 
+		}
+		
+		// 2. Create and setup the residents agent (Manager) if it doesn't exist
+		if (empty(residents)) {
+			write "[Demography] Creating residents agent...";
+			create residents number: 1 {
+				do setup;
 			}
 		}
 	}

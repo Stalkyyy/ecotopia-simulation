@@ -46,7 +46,9 @@ species mini_ville {
 			+ (modular_housing_units * capacity_per_unit["modular"]);
 		
 		// debug log
-		write "MiniVille " + index + " initialized. Housing cap: " + housing_capacity; 
+		if (index mod 50 = 0) {
+			write "MiniVille " + index + " initialized. Housing cap: " + housing_capacity; 
+		}
 	}
 	
 	aspect population_map {
