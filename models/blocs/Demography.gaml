@@ -1,7 +1,6 @@
 /**
 * Name: Demography bloc (MOSIMA)
-* Authors: Maël Franceschetti, Cédric Herpson, Jean-Daniel Kant
-* Mail: firstname.lastname@lip6.fr
+* Authors: Ege Eken
 */
 
 model Demography
