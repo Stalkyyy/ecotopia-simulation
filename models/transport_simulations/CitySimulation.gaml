@@ -47,6 +47,7 @@ global {
 
     // km usage per tick per vehicle
     map<string, float> km_usage <- vehicle_types as_map (each::0.0);
+    map<string, float> total_km_usage <- vehicle_types as_map (each::0.0);
 
     // vehicles needed per tick
     map<string, int> vehicles_needed <- vehicle_types as_map (each::0);
@@ -91,6 +92,7 @@ global {
     reflex reset_metrics {
     	// check for peaks before reset
     	loop v over: vehicle_types {
+    		total_km_usage[v] <- total_km_usage[v] + km_usage[v];
     		if (vehicles_needed[v] > max_vehicles_needed[v]) {
     			max_vehicles_needed[v] <- vehicles_needed[v];
     		}
@@ -125,6 +127,10 @@ global {
 	    save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
 	    save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
 	    save ["peak_trains_fleet_per_1k", peak_trains_fleet_per_1k] to: "city_profile.csv" rewrite: false;
+	    
+	    loop v over: vehicle_types {
+	        save ["total_km_" + v, total_km_usage[v]] to: "city_profile.csv" rewrite: false;
+    	}
 	
 	    write "Simulation finished. Profile saved to city_profile.csv";
 	    do pause;
@@ -312,7 +318,7 @@ species citizen {
     // -----------------------
     
     reflex wake_up when: current_date.hour = wake_up_hour and activity = "sleep" {
-        activity <- "awake";
+        activity <- "idle";
         do prepare_daily_variables;
     }
     
@@ -322,25 +328,25 @@ species citizen {
         location <- work;
     }
     reflex leave_work when: is_working_today and current_date.hour = end_work_hour and activity = "work" {
-        activity <- "awake";
+        activity <- "idle";
         do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
         location <- home;
     }
     
-    reflex start_errand when: is_errand_today and current_date.hour = errand_start_hour and activity = "awake" {
+    reflex start_errand when: is_errand_today and current_date.hour = errand_start_hour and activity = "idle" {
         activity <- "errand";
         errand_location <- city_agent.get_random_position_in_city();
         do add_travel_to_total(vehicle_usage(location, errand_location, create_vehicle_choice_initial_usage()));
         location <- errand_location;
     }
     reflex end_errand when: is_errand_today and current_date.hour = errand_end_hour and activity = "errand" {
-        activity <- "awake";
+        activity <- "idle";
         do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
         location <- home; 
         errand_location <- nil;
     }
     
-    reflex start_leisure when: current_date.hour = leisure_start_hour and activity = "awake" {
+    reflex start_leisure when: current_date.hour = leisure_start_hour and activity = "idle" {
         activity <- "leisure";
         if (leisure_type = "outskirts") {
             do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
@@ -352,7 +358,7 @@ species citizen {
         }
     }
     reflex end_leisure when: current_date.hour = leisure_end_hour and activity = "leisure" {
-        activity <- "awake";
+        activity <- "idle";
         if (location != home) {
         	if leisure_type = "external" { // we are outside (to visualize) but we should travel from the train station
         		ask train_agent { do register_passenger_in; }
@@ -452,7 +458,7 @@ species citizen {
     rgb agent_color {
         switch activity {
             match "sleep"   { return rgb(120, 120, 255); } // Blue
-            match "awake"   { return rgb(155, 155, 155); } // Gray
+            match "idle"   { return rgb(155, 155, 155); } // Gray
             match "work"    { return rgb(255, 80, 80); }  // Red
             match "errand"  { return rgb(255, 200, 80); } // Orange/Yellow
             match "leisure" { return rgb(80, 255, 120); } // Green
@@ -724,7 +730,7 @@ experiment city_simulation type: gui {
 	        // -----------------------
 	        chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} {
 	            data "Sleep" value: citizen count (each.activity = "sleep") color: rgb(120, 120, 255);
-	            data "Awake" value: citizen count (each.activity = "awake") color: rgb(155, 155, 155);
+	            data "Idle" value: citizen count (each.activity = "idle") color: rgb(155, 155, 155);
 	            data "Work" value: citizen count (each.activity = "work") color: rgb(255, 80, 80);
 	            data "Errand" value: citizen count (each.activity = "errand") color: rgb(255, 200, 80);
 	            data "Leisure" value: citizen count (each.activity = "leisure") color: rgb(80, 255, 120);
