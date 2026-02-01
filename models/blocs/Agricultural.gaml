@@ -145,25 +145,6 @@ global{
 	    "autumn"::0.1,
 	    "winter"::0.8
 	];*/
-    
-	
-	
-	//469 000 000 kg de viande
-	//703 500 000 kg de légumes
-	
-	// * 8576.0 = 4 022 144 000 000 L d'eau pour la viande tot par mois
-	// * 425 * 74/41 = 539 635 975 609,76 L d'eau pour les légumes tot par mois
-	
-	// le tout additionné -> 4 561 779 975 609,8 L pour la consommation de la population
-	// soit 4,6 * 10^12 L
-	
-	// mais avec le pourcentage de production de 5% on a 4,6 * 10^12 * 1.05 = 4 830 000 000 000 L soit 4,8 * 10^12 L
-	// mais qu'en est-il des demandes d'urbanisme ? et est-ce qu'on obtient les mêmes résultats que les demandes de population ? 
-	// pour atteindre les 10^13 L que nous avions comme résultat en macro, il nous reste 5200000000000 L soit 5,2*10^12 L
-	
-	// urbanisme, une maison a besoin de 20 000 kg de coton, soit 20 000 * 10 000 * (84/38) = 442 105 263,2 soit 4,4*10^8 L
-	// pour atteindre les 5,2*10^12 L nécessaires restants, il faudrait que urbanisme construise 5,2*10^12 * 0.95 = 4 940 000 000 000 soit 4,9*10^12 L restant
-	// suite du calcul : 4,9*10^12 / 4,4*10^8 = 11 136,3636364 soit environ 11 136 nouvelles maisons par mois ???? 
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -199,7 +180,7 @@ species agricultural parent:bloc{
 		do collect_last_tick_data();
 		
 		//do population_activity(pop);
-		
+
 		if (cpt_tick mod 3 = 0) {
 	        current_season <- (current_season + 1) mod length(seasons);
 	    }
