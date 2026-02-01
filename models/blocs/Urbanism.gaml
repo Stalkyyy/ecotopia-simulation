@@ -42,6 +42,18 @@ global{
 	int max_units_per_tick <- 5000;            // CAP in *real* housing units / tick (tune later)
 	int min_units_per_tick <- 0;
 
+	// Construction pipeline timing (interpretation: 1 tick = 1 month)
+	int build_duration_months_default <- 6;
+	int max_waiting_checks_per_tick <- 200; // try to start up to N waiting orders per tick
+
+	// Debug / diagnostics
+	int prev_total_units <- 0;
+	int completed_units_tick <- 0; // units that finished this tick (delta of stock)
+	map<string, int> tick_orders_created <- ["wood"::0, "modular"::0];
+	map<string, float> tick_orders_created_scaled <- ["wood"::0.0, "modular"::0.0];
+	float pending_surface_total <- 0.0;   // sum of pending_surface in non-idle cities (m², simulated)
+	float pending_capacity_total <- 0.0;  // sum of pending capacity in non-idle cities (persons, simulated)
+
 	// Demography scaling (must match Demography.gaml pop_per_ind)
 	int pop_per_ind <- 6700;
 
@@ -50,6 +62,9 @@ global{
 	int nb_minivilles_sim <- 1;
 	int nb_minivilles_real <- 1;
 	float alpha_mv <- 1.0;
+	bool use_dynamic_alpha <- false; // if true, recompute alpha_mv each tick (can make scaled capacity 'wiggle' with population)
+	bool alpha_mv_frozen_set <- false;
+	float alpha_mv_frozen <- 1.0; // snapshot of alpha_mv_dynamic at first tick when frozen
 	float capacity_real_scaled <- 0.0;
 	float surface_used_scaled <- 0.0;
 	float remaining_buildable_scaled <- 0.0;
@@ -129,18 +144,53 @@ species urbanism parent: bloc{
 		// Always sync first (single source of truth = mini-villes)
 		do sync_from_cities(cities);
 		do sync_constructible_surface(cities);
+
+		// Try to start some orders that are waiting for resources (resource dependence)
+		int started_from_waiting <- 0;
+		loop c over: (cities where (each.construction_state = "waiting_resources")) {
+			if(started_from_waiting >= max_waiting_checks_per_tick) { break; }
+			map<string, unknown> info_wait <- producer.produce(c.pending_demand);
+			if(bool(info_wait["ok"])) {
+				ask c { do start_build; }
+				// count as started builds this tick (still not completed)
+				tick_constructions["wood"] <- tick_constructions["wood"] + c.pending_wood_units;
+				tick_constructions["modular"] <- tick_constructions["modular"] + c.pending_modular_units;
+				tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(c.pending_wood_units);
+				tick_constructions_scaled["modular"] <- tick_constructions_scaled["modular"] + float(c.pending_modular_units);
+			}
+			started_from_waiting <- started_from_waiting + 1;
+		}
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
 		population_count <- nb_humans;
 		population_real <- nb_humans * pop_per_ind;
 
+		// Completed units this tick = delta in built stock (construction commits happen inside mini-villes)
+		int current_total_units <- units["wood"] + units["modular"];
+		completed_units_tick <- max(0, current_total_units - prev_total_units);
+		prev_total_units <- current_total_units;
+
 		// CDC-style scaling: if the simulated set of mini-villes represents a constellation of real mini-villes
 		nb_minivilles_sim <- max(1, length(cities));
 		nb_minivilles_real <- int(ceil(population_real / target_pop_per_miniville_real));
-		alpha_mv <- float(nb_minivilles_real) / float(nb_minivilles_sim);
+		float alpha_mv_dynamic <- float(nb_minivilles_real) / float(nb_minivilles_sim);
+		if (!alpha_mv_frozen_set) {
+			alpha_mv_frozen <- alpha_mv_dynamic;
+			alpha_mv_frozen_set <- true;
+		}
+		if (use_dynamic_alpha) {
+			alpha_mv <- alpha_mv_dynamic;
+		} else {
+			alpha_mv <- alpha_mv_frozen;
+		}
+
+		// Pending (orders waiting/building) to prevent overshoot and land overbooking
+		pending_surface_total <- sum(cities where (each.construction_state != "idle") collect each.pending_surface);
+		pending_capacity_total <- sum(cities where (each.construction_state != "idle") collect ((each.pending_wood_units * capacity_per_unit["wood"]) + (each.pending_modular_units * capacity_per_unit["modular"])));
 
 		// Capacity and land are computed from the simulated mini-villes, then scaled by alpha for comparisons to real population
-		float capacity_effective <- total_capacity * alpha_mv; // persons
+		float capacity_effective <- total_capacity * alpha_mv; // persons (built stock)
+		float capacity_future_effective <- (total_capacity + pending_capacity_total) * alpha_mv; // persons (built + in pipeline)
 		capacity_real_scaled <- capacity_effective;
 		surface_used_scaled <- surface_used * alpha_mv;
 		remaining_buildable_scaled <- constructible_surface_total * alpha_mv;
@@ -151,7 +201,7 @@ species urbanism parent: bloc{
 		}
 
 		float desired_capacity <- population_real / target_occupancy_rate;
-		float deficit_people <- max(0.0, desired_capacity - capacity_effective);
+		float deficit_people <- max(0.0, desired_capacity - capacity_future_effective);
 
 		// Convert deficit in persons to a number of (SIMULATED) housing units to add this tick
 		int units_needed <- int(ceil(deficit_people / (average_capacity_per_unit() * alpha_mv)));
@@ -160,7 +210,7 @@ species urbanism parent: bloc{
 		planned_units <- max(min_units_per_tick, planned_units);
 
 		// Hysteresis: stop building once we are comfortably below the target occupancy
-		float occupancy <- population_real / max(1.0, capacity_effective);
+		float occupancy <- population_real / max(1.0, capacity_future_effective);
 		occupancy_rate <- occupancy;
 		if(occupancy <= (target_occupancy_rate - occupancy_hysteresis)) {
 			planned_units <- 0;
@@ -177,25 +227,31 @@ species urbanism parent: bloc{
 			mini_ville target_city <- select_city(cities, planned_surface);
 			if(target_city != nil){
 
-				map<string, float> demand <- compute_resource_demand(wood_plan, modular_plan);
+				map<string, float> demand <- compute_resource_demand(wood_plan, modular_plan, planned_surface);
 				map<string, unknown> info <- producer.produce(demand);
 				bool ok <- bool(info["ok"]);
 
+				// Always register the order first (city enters waiting_resources). Build will only start if resources are provided.
+				ask target_city { do set_construction_order(wood_plan, modular_plan, planned_surface, demand, build_duration_months_default); }
+				tick_orders_created["wood"] <- wood_plan;
+				tick_orders_created["modular"] <- modular_plan;
+				tick_orders_created_scaled["wood"] <- float(wood_plan);
+				tick_orders_created_scaled["modular"] <- float(modular_plan);
+
 				if(ok){
-					write "urbanism: build " + string(planned_units) + " units (area=" + string(planned_surface)
+					write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
 						+ ") in mini_ville " + string(target_city.index);
 
-					do add_units_to_city(target_city, wood_plan, modular_plan, planned_surface);
+					ask target_city { do start_build; }
 
-					// re-sync after modifications
-					do sync_from_cities(cities);
-					do sync_constructible_surface(cities);
-
-					tick_constructions["wood"] <- wood_plan;
-					tick_constructions["modular"] <- modular_plan;
-					tick_constructions_scaled["wood"] <- float(wood_plan);
-					tick_constructions_scaled["modular"] <- float(modular_plan);
+					// Track started builds (these are NOT completed yet)
+					tick_constructions["wood"] <- tick_constructions["wood"] + wood_plan;
+					tick_constructions["modular"] <- tick_constructions["modular"] + modular_plan;
+					tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(wood_plan);
+					tick_constructions_scaled["modular"] <- tick_constructions_scaled["modular"] + float(modular_plan);
 				}
+				// If ok=false, the mini-ville stays in waiting_resources and will be retried on later ticks (resource dependence).
+
 			}
 		}
 
@@ -225,14 +281,16 @@ species urbanism parent: bloc{
 		return (sum(housing_types collect capacity_per_unit[each]) / length(housing_types));
 	}
 
-	map<string, float> compute_resource_demand(int wood_units, int modular_units){
+	map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
 		// IMPORTANT: do NOT multiply again by pop_per_ind — these are already REAL units.
-		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0];
+		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 
 		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units;
 		demand["kg_cotton"] <- resource_per_unit_modular["kg_cotton"] * modular_units;
 		demand["kWh energy"] <- (resource_per_unit_wood["kWh energy"] * wood_units
 			+ resource_per_unit_modular["kWh energy"] * modular_units);
+
+		demand["m² land"] <- planned_surface;
 
 		return demand;
 	}
@@ -246,7 +304,7 @@ species urbanism parent: bloc{
 		if(length(cities) = 0){
 			return nil;
 		}
-		list<mini_ville> candidates <- cities where (each.remaining_buildable_area >= required_area);
+		list<mini_ville> candidates <- cities where (each.construction_state = "idle" and each.remaining_buildable_area >= required_area);
 		if(length(candidates) > 0){
 			return one_of(candidates);
 		}
@@ -267,10 +325,16 @@ species urbanism parent: bloc{
 
 	action sync_constructible_surface(list<mini_ville> cities){
 		// Local constraint = sum of remaining buildable areas in mini-villes
+		// We subtract pending_surface (orders in waiting/building) to avoid overbooking land before commits.
 		float local_remaining <- 0.0;
+		float local_pending <- 0.0;
 		loop c over: cities{
 			local_remaining <- local_remaining + c.remaining_buildable_area;
+			if(c.construction_state != "idle"){
+				local_pending <- local_pending + c.pending_surface;
+			}
 		}
+		local_remaining <- max(0.0, local_remaining - local_pending);
 
 		// Global constraint can also come from ecosystem land stock.
 		float eco_land <- 1e18;
@@ -317,6 +381,10 @@ species urbanism parent: bloc{
 		tick_constructions["modular"] <- 0;
 		tick_constructions_scaled["wood"] <- 0.0;
 		tick_constructions_scaled["modular"] <- 0.0;
+		tick_orders_created["wood"] <- 0;
+		tick_orders_created["modular"] <- 0;
+		tick_orders_created_scaled["wood"] <- 0.0;
+		tick_orders_created_scaled["modular"] <- 0.0;
 	}
 }
 
@@ -388,15 +456,19 @@ species urban_producer parent: production_agent{
  * Minimal experiment to visualize capacity vs population and construction activity.
  */
 experiment run_urbanism type: gui {
+	parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
+	parameter "Frozen alpha_mv (debug)" var: alpha_mv_frozen;
 	output {
 		display Urbanism_information {
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
 				data "capacity (real, scaled)" value: capacity_real_scaled color: #blue;
+				data "capacity (sim built)" value: total_capacity color: #lightblue;
 				data "population (real)" value: population_real color: #darkgray;
 			}
-			chart "Constructions per tick" type: series size: {0.5,0.5} position: {0.5, 0} {
-				data "wood units (scaled)" value: tick_constructions_scaled["wood"] * alpha_mv color: #sienna;
-				data "modular units (scaled)" value: tick_constructions_scaled["modular"] * alpha_mv color: #orange;
+			chart "Construction pipeline" type: series size: {0.5,0.5} position: {0.5, 0} {
+				data "orders created (scaled)" value: (tick_orders_created_scaled["wood"] + tick_orders_created_scaled["modular"]) * alpha_mv color: #darkgray;
+				data "builds started (scaled)" value: (tick_constructions_scaled["wood"] + tick_constructions_scaled["modular"]) * alpha_mv color: #orange;
+				data "units completed (scaled)" value: float(completed_units_tick) * alpha_mv color: #green;
 			}
 			chart "Resource use (provided)" type: series size: {0.5,0.5} position: {0, 0.5} {
 				loop r over: tick_resources_used.keys{
@@ -409,12 +481,26 @@ experiment run_urbanism type: gui {
 			}
 		}
 
+		display Pipeline_debug {
+			chart "Mini-ville states" type: series size: {1.0,0.5} position: {0, 0} {
+				data "idle" value: mini_ville count (each.construction_state = "idle");
+				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
+				data "building" value: mini_ville count (each.construction_state = "building");
+
+			}
+		}
+
 
 		monitor "alpha_mv" value: alpha_mv;
 		monitor "capacity_scaled" value: capacity_real_scaled;
 		monitor "pop_real" value: population_real;
 		monitor "housing_deficit" value: max(0.0, population_real - capacity_real_scaled);
 		monitor "occupancy" value: occupancy_rate;
+
+		display MiniVille_state_map {
+			// Visualize construction pipeline spatially (colors: green=idle, orange=waiting, red=building)
+			species mini_ville aspect: construction_state_view;
+		}
 
 		display MiniVille_information {
 			chart "Mini-ville capacity" type: series size: {0.5,0.5} position: {0, 0} {
