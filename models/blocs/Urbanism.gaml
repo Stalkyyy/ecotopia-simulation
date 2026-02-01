@@ -155,21 +155,13 @@ species urbanism parent: bloc{
 		int started_from_waiting <- 0;
 		loop c over: (cities where (each.construction_state = "waiting_resources")) {
 			if(started_from_waiting >= max_waiting_checks_per_tick) { break; }
-			map<string, unknown> info_wait <- producer.produce(c.pending_demand);
-			if(bool(info_wait["ok"])) {
-				ask c { do start_build; }
-				// count as started builds this tick (still not completed)
-				tick_constructions["wood"] <- tick_constructions["wood"] + c.pending_wood_units;
-				tick_constructions["modular"] <- tick_constructions["modular"] + c.pending_modular_units;
-				tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(c.pending_wood_units);
-				tick_constructions_scaled["modular"] <- tick_constructions_scaled["modular"] + float(c.pending_modular_units);
-			}
+			do try_start_city_order(c);
 			started_from_waiting <- started_from_waiting + 1;
 		}
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
 		population_count <- nb_humans;
-		population_real <- float(nb_humans * pop_per_ind);
+		population_real <- nb_humans * pop_per_ind;
 
 		// Completed units this tick = delta in built stock (construction commits happen inside mini-villes)
 		int current_wood_units <- units["wood"];
@@ -254,29 +246,22 @@ species urbanism parent: bloc{
 			if(target_city != nil){
 
 				map<string, float> demand <- compute_resource_demand(wood_plan, modular_plan, planned_surface);
-				map<string, unknown> info <- producer.produce(demand);
-				bool ok <- bool(info["ok"]);
 
-				// Always register the order first (city enters waiting_resources). Build will only start if resources are provided.
+				// Always register the order first (city enters waiting_resources).
+				// IMPORTANT: do NOT call producer.produce() before the order exists.
+				// Resource reservation/consumption happens only when the city transitions to "building".
 				ask target_city { do set_construction_order(wood_plan, modular_plan, planned_surface, demand, build_duration_months_default); }
 				tick_orders_created["wood"] <- tick_orders_created["wood"] + wood_plan;
 				tick_orders_created["modular"] <- tick_orders_created["modular"] + modular_plan;
 				tick_orders_created_scaled["wood"] <- tick_orders_created_scaled["wood"] + float(wood_plan);
 				tick_orders_created_scaled["modular"] <- tick_orders_created_scaled["modular"] + float(modular_plan);
 
-				if(ok){
-					write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
-						+ ") in mini_ville " + string(target_city.index);
-
-					ask target_city { do start_build; }
-
-					// Track started builds (these are NOT completed yet)
-					tick_constructions["wood"] <- tick_constructions["wood"] + wood_plan;
-					tick_constructions["modular"] <- tick_constructions["modular"] + modular_plan;
-					tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(wood_plan);
-					tick_constructions_scaled["modular"] <- tick_constructions_scaled["modular"] + float(modular_plan);
-				}
-				// If ok=false, the mini-ville stays in waiting_resources and will be retried on later ticks (resource dependence).
+					// Try to reserve resources immediately so construction can start in the same tick when possible.
+					if(try_start_city_order(target_city)){
+						write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
+							+ ") in mini_ville " + string(target_city.index);
+					}
+				// If ok=false, the mini-ville stays in waiting_resources and will be retried on later ticks.
 
 			}
 		}
@@ -300,6 +285,26 @@ species urbanism parent: bloc{
 			// If energy is missing, producer will return ok=false; we still record demanded amounts separately if needed later
 			map<string, unknown> info <- producer.produce(energy_demand);
 		}
+	}
+
+	// Centralized start logic: reserve external resources and transition the city to "building".
+	// This is used both for newly created orders and for retrying "waiting_resources" orders.
+	bool try_start_city_order(mini_ville c){
+		if(c = nil){ return false; }
+		if(c.construction_state != "waiting_resources"){ return false; }
+		if(length(c.pending_demand) = 0){ return false; }
+
+		map<string, unknown> info <- producer.produce(c.pending_demand);
+		if(bool(info["ok"])) {
+			ask c { do start_build; }
+			// count as started builds this tick (still not completed)
+			tick_constructions["wood"] <- tick_constructions["wood"] + c.pending_wood_units;
+			tick_constructions["modular"] <- tick_constructions["modular"] + c.pending_modular_units;
+			tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(c.pending_wood_units);
+			tick_constructions_scaled["modular"] <- tick_constructions_scaled["modular"] + float(c.pending_modular_units);
+			return true;
+		}
+		return false;
 	}
 
 	/* Helpers */
@@ -453,24 +458,104 @@ species urban_producer parent: production_agent{
 
 	map<string, unknown> produce(map<string, float> demand){
 		bool ok <- true;
+		list<string> processed <- [];
 
+		// --- Phase 1: non-ecosystem resources in a stable order ---
+		// Rationale: Agriculture/Energy may have their own constraints and can fail.
+		// We try them BEFORE consuming scarce ecosystem land/wood.
+		list<string> priority <- ["kg_cotton", "kWh energy"];
+		loop r over: priority {
+			if(r in demand.keys){
+				float qty <- demand[r];
+				if(external_producers.keys contains r){
+					map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+					if not bool(info["ok"]) {
+						ok <- false;
+					} else {
+						if(not (tick_resources_used.keys contains r)){
+							tick_resources_used[r] <- 0.0;
+						}
+						tick_resources_used[r] <- tick_resources_used[r] + qty;
+					}
+				} else {
+					ok <- false;
+				}
+				processed <- processed + [r];
+			}
+		}
+
+		// --- Phase 2: any other non-ecosystem keys (except land/wood) ---
 		loop r over: demand.keys{
+			if(r in processed){ continue; }
+			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
 			float qty <- demand[r];
-
 			if(external_producers.keys contains r){
 				map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
 				if not bool(info["ok"]) {
 					ok <- false;
 				} else {
-					// Count as used only if it was actually provided
 					if(not (tick_resources_used.keys contains r)){
 						tick_resources_used[r] <- 0.0;
 					}
 					tick_resources_used[r] <- tick_resources_used[r] + qty;
 				}
 			} else {
-				// No supplier registered: fail explicitly
 				ok <- false;
+			}
+			processed <- processed + [r];
+		}
+
+		// --- Phase 3: ecosystem resources (atomic pre-check + single call) ---
+		map<string, float> eco_demand <- [];
+		if("m² land" in demand.keys){ eco_demand["m² land"] <- demand["m² land"]; }
+		if("kg wood" in demand.keys){ eco_demand["kg wood"] <- demand["kg wood"]; }
+		if("L water" in demand.keys){ eco_demand["L water"] <- demand["L water"]; }
+
+		if(length(eco_demand) > 0){
+			// If no ecosystem exists yet, fail explicitly
+			if(length(ecosystem) = 0){
+				ok <- false;
+			} else {
+				float land_av <- 0.0;
+				float wood_av <- 0.0;
+				float water_av <- 0.0;
+				ask one_of(ecosystem){
+					land_av <- land_stock;
+					wood_av <- wood_stock_kg;
+					water_av <- water_stock_l;
+				}
+
+				bool eco_ok <- true;
+				if("m² land" in eco_demand.keys and eco_demand["m² land"] > land_av){ eco_ok <- false; }
+				if("kg wood" in eco_demand.keys and eco_demand["kg wood"] > wood_av){ eco_ok <- false; }
+				if("L water" in eco_demand.keys and eco_demand["L water"] > water_av){ eco_ok <- false; }
+
+				if(!eco_ok){
+					ok <- false;
+				} else {
+					// Pick the ecosystem supplier bloc (m² land preferred, else kg wood / L water)
+					bloc eco_bloc <- nil;
+					if(external_producers.keys contains "m² land"){ eco_bloc <- external_producers["m² land"]; }
+					else if(external_producers.keys contains "kg wood"){ eco_bloc <- external_producers["kg wood"]; }
+					else if(external_producers.keys contains "L water"){ eco_bloc <- external_producers["L water"]; }
+
+					if(eco_bloc = nil){
+						ok <- false;
+					} else {
+						map<string, unknown> info <- eco_bloc.producer.produce(eco_demand);
+						if not bool(info["ok"]) {
+							ok <- false;
+						} else {
+							loop r over: eco_demand.keys{
+								float qty <- eco_demand[r];
+								if(not (tick_resources_used.keys contains r)){
+									tick_resources_used[r] <- 0.0;
+								}
+								tick_resources_used[r] <- tick_resources_used[r] + qty;
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -485,7 +570,7 @@ experiment run_urbanism type: gui {
 	parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 	parameter "Frozen alpha_mv (debug)" var: alpha_mv_frozen;
 	output {
-		display Urbanism_information type:2d{
+		display Urbanism_information {
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
 				data "capacity (real, scaled)" value: capacity_real_scaled color: #blue;
 				data "capacity (sim built)" value: total_capacity color: #lightblue;
@@ -506,10 +591,9 @@ experiment run_urbanism type: gui {
 				data "remaining_buildable (scaled)" value: remaining_buildable_scaled color: #black;
 			}
 		}
-		
-		
-		display Pipeline_debug type:2d{
-			chart "Mini-ville states" type: series size: {0.5,0.5} position: {0, 0} {
+
+		display Pipeline_debug {
+			chart "Mini-ville states" type: series size: {1.0,0.5} position: {0, 0} {
 				data "idle" value: mini_ville count (each.construction_state = "idle");
 				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
 				data "building" value: mini_ville count (each.construction_state = "building");
@@ -529,7 +613,7 @@ experiment run_urbanism type: gui {
 			species mini_ville aspect: construction_state_view;
 		}
 
-		display MiniVille_information type:2d{
+		display MiniVille_information {
 			chart "Mini-ville capacity" type: series size: {0.5,0.5} position: {0, 0} {
 				data "total_housing_capacity" value: sum(mini_ville collect each.housing_capacity) color: #purple;
 				data "total_units" value: sum(mini_ville collect (each.wood_housing_units + each.modular_housing_units)) color: #sienna;
