@@ -145,9 +145,6 @@ species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- true; // true to activate the demography (births, deaths), else false.
 	
-	// Track population per city locally since we cannot modify MiniVille.gaml
-	map<mini_ville, float> city_pop_map <- [];
-	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
 		
@@ -255,10 +252,10 @@ species residents parent:bloc{
     }
     
     action update_miniville_populations(list<mini_ville> available_cities) {
-    	// Reset counts for the passed cities in our local map
-    	loop c over: available_cities {
-    		city_pop_map[c] <- 0.0;
-    	}
+    	// Reset counts for the passed cities
+		ask available_cities {
+			population_count <- 0.0;
+		}
 		
 		// Map individuals to cities
 		ask individual {
@@ -266,8 +263,7 @@ species residents parent:bloc{
 			// Note: We check 'available_cities contains home' to ensure we only use valid cities provided by Urbanism
 			if (home = nil or not(available_cities contains home)) {
 				// Try to find a city with space
-				// Use the local map to check current load. myself refers to residents agent.
-				list<mini_ville> candidates <- available_cities where ((myself.city_pop_map at each) < each.housing_capacity);
+				list<mini_ville> candidates <- available_cities where (each.population_count < each.housing_capacity);
 				if (!empty(candidates)) {
 					home <- one_of(candidates);
 				} else {
@@ -277,9 +273,7 @@ species residents parent:bloc{
 			}
 
 			if (home != nil) {
-				// Update the local map
-				if (myself.city_pop_map[home] = nil) { myself.city_pop_map[home] <- 0.0; }
-				myself.city_pop_map[home] <- myself.city_pop_map[home] + pop_per_ind;
+				home.population_count <- home.population_count + pop_per_ind;
 			}
 		}
     }
@@ -288,12 +282,10 @@ species residents parent:bloc{
 		if (cycle mod 12 = 0) { // once a year
 			int total_mapped_pop <- 0; 
 			ask cities {
-				float pop <- (myself.city_pop_map at self);
-				if (pop = nil) { pop <- 0.0; }
-				total_mapped_pop <- total_mapped_pop + int(pop);
+				total_mapped_pop <- total_mapped_pop + int(population_count);
 				// Debug log every 100 mini_villes
 				if (index mod 100 = 0) {
-					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + pop + " / Cap: " + housing_capacity;
+					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
 				}
 			}
 			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * pop_per_ind);
@@ -1032,11 +1024,11 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 
 		display MiniVille_Distribution_6 {
 			chart "MiniVille Population Sample" type: histogram background: #white {
-				data "MV A" value: (length(monitored_minivilles) > 0 and (first(residents).city_pop_map at monitored_minivilles[0]) != nil) ? first(residents).city_pop_map[monitored_minivilles[0]] : 0 color: #blue;
-				data "MV B" value: (length(monitored_minivilles) > 1 and (first(residents).city_pop_map at monitored_minivilles[1]) != nil) ? first(residents).city_pop_map[monitored_minivilles[1]] : 0 color: #red;
-				data "MV C" value: (length(monitored_minivilles) > 2 and (first(residents).city_pop_map at monitored_minivilles[2]) != nil) ? first(residents).city_pop_map[monitored_minivilles[2]] : 0 color: #green;
-				data "MV D" value: (length(monitored_minivilles) > 3 and (first(residents).city_pop_map at monitored_minivilles[3]) != nil) ? first(residents).city_pop_map[monitored_minivilles[3]] : 0 color: #purple;
-				data "MV E" value: (length(monitored_minivilles) > 4 and (first(residents).city_pop_map at monitored_minivilles[4]) != nil) ? first(residents).city_pop_map[monitored_minivilles[4]] : 0 color: #orange;
+				data "MV A" value: (length(monitored_minivilles) > 0) ? monitored_minivilles[0].population_count : 0 color: #blue;
+				data "MV B" value: (length(monitored_minivilles) > 1) ? monitored_minivilles[1].population_count : 0 color: #red;
+				data "MV C" value: (length(monitored_minivilles) > 2) ? monitored_minivilles[2].population_count : 0 color: #green;
+				data "MV D" value: (length(monitored_minivilles) > 3) ? monitored_minivilles[3].population_count : 0 color: #purple;
+				data "MV E" value: (length(monitored_minivilles) > 4) ? monitored_minivilles[4].population_count : 0 color: #orange;
 			}
 		}
 		

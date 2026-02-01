@@ -16,7 +16,7 @@ global{
 	float total_area_per_ville <- 2e6; // m² per mini-ville (macro proxy)
 	float buildable_ratio <- 0.4;
 	float green_ratio <- 0.4;
-	float population_count <- 0.0;
+	// float population_count <- 0.0; // Moved to species
 	float infrastructure_ratio <- 0.2;
 	float area_per_unit_default <- 70.0; // m² per housing unit (avg footprint)
 	float initial_fill_ratio <- 0.2; // share of buildable area already used at init
@@ -43,6 +43,7 @@ species mini_ville {
 	int wood_housing_units <- 0;
 	int modular_housing_units <- 0;
 	float housing_capacity <- 0.0;
+	float population_count <- 0.0; // Population currently living here
 	float remaining_buildable_area <- buildable_area;
 
 	// --- Construction pipeline ---
