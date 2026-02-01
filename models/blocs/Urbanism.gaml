@@ -47,8 +47,14 @@ global{
 	int max_waiting_checks_per_tick <- 200; // try to start up to N waiting orders per tick
 
 	// Debug / diagnostics
+	bool prev_totals_initialized <- false;
 	int prev_total_units <- 0;
-	int completed_units_tick <- 0; // units that finished this tick (delta of stock)
+	int prev_wood_units <- 0;
+	int prev_modular_units <- 0;
+
+	int completed_units_tick <- 0; // total units that finished since last tick (delta of stock)
+	int completed_wood_units_tick <- 0;
+	int completed_modular_units_tick <- 0; // units that finished this tick (delta of stock)
 	map<string, int> tick_orders_created <- ["wood"::0, "modular"::0];
 	map<string, float> tick_orders_created_scaled <- ["wood"::0.0, "modular"::0.0];
 	float pending_surface_total <- 0.0;   // sum of pending_surface in non-idle cities (m², simulated)
@@ -163,12 +169,32 @@ species urbanism parent: bloc{
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
 		population_count <- nb_humans;
-		population_real <- nb_humans * pop_per_ind;
+		population_real <- float(nb_humans * pop_per_ind);
 
 		// Completed units this tick = delta in built stock (construction commits happen inside mini-villes)
-		int current_total_units <- units["wood"] + units["modular"];
-		completed_units_tick <- max(0, current_total_units - prev_total_units);
-		prev_total_units <- current_total_units;
+		int current_wood_units <- units["wood"];
+		int current_modular_units <- units["modular"];
+		int current_total_units <- current_wood_units + current_modular_units;
+
+		// Compute completions as *deltas* of built stock (so "completed" != "started").
+		// Avoid a large spike at the first tick by initializing previous totals once.
+		if(!prev_totals_initialized){
+			prev_totals_initialized <- true;
+			prev_wood_units <- current_wood_units;
+			prev_modular_units <- current_modular_units;
+			prev_total_units <- current_total_units;
+			completed_wood_units_tick <- 0;
+			completed_modular_units_tick <- 0;
+			completed_units_tick <- 0;
+		} else {
+			completed_wood_units_tick <- max(0, current_wood_units - prev_wood_units);
+			completed_modular_units_tick <- max(0, current_modular_units - prev_modular_units);
+			completed_units_tick <- completed_wood_units_tick + completed_modular_units_tick;
+
+			prev_wood_units <- current_wood_units;
+			prev_modular_units <- current_modular_units;
+			prev_total_units <- current_total_units;
+		}
 
 		// CDC-style scaling: if the simulated set of mini-villes represents a constellation of real mini-villes
 		nb_minivilles_sim <- max(1, length(cities));
@@ -233,10 +259,10 @@ species urbanism parent: bloc{
 
 				// Always register the order first (city enters waiting_resources). Build will only start if resources are provided.
 				ask target_city { do set_construction_order(wood_plan, modular_plan, planned_surface, demand, build_duration_months_default); }
-				tick_orders_created["wood"] <- wood_plan;
-				tick_orders_created["modular"] <- modular_plan;
-				tick_orders_created_scaled["wood"] <- float(wood_plan);
-				tick_orders_created_scaled["modular"] <- float(modular_plan);
+				tick_orders_created["wood"] <- tick_orders_created["wood"] + wood_plan;
+				tick_orders_created["modular"] <- tick_orders_created["modular"] + modular_plan;
+				tick_orders_created_scaled["wood"] <- tick_orders_created_scaled["wood"] + float(wood_plan);
+				tick_orders_created_scaled["modular"] <- tick_orders_created_scaled["modular"] + float(modular_plan);
 
 				if(ok){
 					write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
@@ -459,7 +485,7 @@ experiment run_urbanism type: gui {
 	parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 	parameter "Frozen alpha_mv (debug)" var: alpha_mv_frozen;
 	output {
-		display Urbanism_information {
+		display Urbanism_information type:2d{
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
 				data "capacity (real, scaled)" value: capacity_real_scaled color: #blue;
 				data "capacity (sim built)" value: total_capacity color: #lightblue;
@@ -480,9 +506,10 @@ experiment run_urbanism type: gui {
 				data "remaining_buildable (scaled)" value: remaining_buildable_scaled color: #black;
 			}
 		}
-
-		display Pipeline_debug {
-			chart "Mini-ville states" type: series size: {1.0,0.5} position: {0, 0} {
+		
+		
+		display Pipeline_debug type:2d{
+			chart "Mini-ville states" type: series size: {0.5,0.5} position: {0, 0} {
 				data "idle" value: mini_ville count (each.construction_state = "idle");
 				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
 				data "building" value: mini_ville count (each.construction_state = "building");
@@ -502,7 +529,7 @@ experiment run_urbanism type: gui {
 			species mini_ville aspect: construction_state_view;
 		}
 
-		display MiniVille_information {
+		display MiniVille_information type:2d{
 			chart "Mini-ville capacity" type: series size: {0.5,0.5} position: {0, 0} {
 				data "total_housing_capacity" value: sum(mini_ville collect each.housing_capacity) color: #purple;
 				data "total_units" value: sum(mini_ville collect (each.wood_housing_units + each.modular_housing_units)) color: #sienna;
