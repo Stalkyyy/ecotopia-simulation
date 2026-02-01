@@ -701,6 +701,11 @@ experiment run_urbanism type: gui {
 		monitor "pop_real" value: population_real;
 		monitor "housing_deficit" value: max(0.0, population_real - capacity_real_scaled);
 		monitor "occupancy" value: occupancy_rate;
+		monitor "tick_can_checks" value: tick_can_checks;
+		monitor "tick_can_fails" value: tick_can_fails;
+		monitor "tick_commit_fails" value: tick_commit_fails;
+		monitor "tick_builds_started" value: builds_started_count_tick;
+		monitor "tick_units_completed" value: completed_units_tick;
 
 		display MiniVille_state_map {
 			// Visualize construction pipeline spatially (colors: green=idle, orange=waiting, red=building)
