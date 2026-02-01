@@ -9,13 +9,13 @@ global {
 	file shp_bounds <- file(shp_path + "boundaries_france.shp");
 	//file shp_forests <- file(shp_path + "forests_france_light.shp");
 	//file shp_rivers_lakes <- file(shp_path + "rivers_france_light.shp");
-	//file shp_mountains <- file(shp_path + "mountains_france_1300m.shp");
+	file shp_mountains <- file(shp_path + "mountains_france_1300m.shp");
 	
 	geometry shape <- envelope(shp_bounds); // has to be named "shape"
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 10000;
+	int population_size <- 1000;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 65M, init from CSV regions
@@ -28,9 +28,18 @@ global {
 	
 	map<string, point> region_coords <- [];
     map<string, int> region_populations <- [];
+    
+    graph transport_network; // To do calculations
+    
+    map<string, float> city_mobility_profile;
 
+	// ----------
+	//    INIT
+	// ----------
     init {
     	create fronteers from: shp_bounds;
+    	create mountain from: shp_mountains;
+    	
     	
     	// Nodes
     	matrix data <- matrix(csv_file("../../includes/data/regions_france.csv"));
@@ -48,6 +57,7 @@ global {
     	scaling_factor <- real_population / float(population_size);
     	write "CSV Loaded:\nFrance Pop: " + real_population+ "\nSimulation Pop: " + population_size;
     	
+    	
     	// Arcs
     	matrix link_data <- matrix(csv_file("../../includes/data/region_links_france.csv"));
     	loop i from: 1 to: link_data.rows - 1 {
@@ -62,6 +72,40 @@ global {
 	            }
 	        }
 	    }
+	    transport_network <- as_edge_graph(transport_link);
+	    
+	    
+	    // Loading scale 3 data
+	    matrix<string> city_data <- matrix<string>(csv_file("city_profile.csv"));
+	    if (data != nil and data.rows > 0) {
+	    	loop i from: 0 to: data.rows - 1 {
+	    		string key <- data[0, i];
+	    		float val <- float(data[1, i]);
+	    		if key != "parameter" {
+	    			city_mobility_profile[key] <- val;
+	    		}
+	    	}
+	    }
+	    create citizen number: population_size;
+	    
+	}
+	
+    reflex calculate_railway_infrastructure_usage {
+    	km_usage["train"] <- 0.0;
+    	vehicles_needed["train"] <- 0;
+    	
+    	ask transport_link { // loop over all links
+    		if (daily_passengers > 0) {
+    			int trains_on_segment <- ceil((daily_passengers * scaling_factor) / train_capacity);
+    			vehicles_needed["train"] <- vehicles_needed["train"] + trains_on_segment;
+    			km_usage["train"] <- km_usage["train"] + (trains_on_segment * shape.perimeter);
+    			daily_passengers <- 0.0;
+    		}
+    	}
+    }
+    
+    reflex stop_simulation when: cycle >= simulation_duration {
+    	do pause;
     }
 }
 
@@ -77,20 +121,157 @@ species region_node {
 species transport_link {
 	region_node start_node;
 	region_node end_node;
+	float daily_passengers <- 0.0;
 	
 	aspect base {
-		draw link(start_node, end_node) color: #blue width: 2.0;
+		rgb link_color <- hsb(0.66 * (1 - min(1.0, daily_passengers / (population_size/30))), 1.0, 1.0);
+        draw shape color: link_color; 
+        draw "sim " + string(int(daily_passengers)) + " (real " + string(int(daily_passengers * scaling_factor)) + ")" at: shape.centroid color: #black font: font("Arial", 6);
 	}
 }
 
 species fronteers { aspect base { draw shape color: #transparent border: #black width: 2.0; } }
+species mountain { aspect base { draw shape color: rgb(200, 200, 200, 150); } }
 
-experiment show_france type: gui {
+
+// data holder
+species trip skills: [moving] {
+	string type;
+	region_node destination;
+	int duration;
+}
+
+species citizen {
+	region_node home_region;
+	string activity <- "local";
+	map<int, trip> travel_plan;
+	
+	trip active_trip <- nil;
+	int remaining_days <- 0;
+	
+	init {
+		home_region <- one_of(region_node);
+		location <- home_region.location;
+		if debug_write {write "Home region: " + home_region.name;}
+		do plan_yearly_travel;
+	}
+	
+	action plan_yearly_travel {
+		// Work trips: ~1.1 / year, on average 1.2 days long
+		int num_professional_trips <- poisson(1.1);
+		loop times: num_professional_trips {
+			loop i from: 1 to: 50 {
+				int work_day <- rnd(0, 365);
+				if (travel_plan[work_day] = nil) {
+					create trip {
+						type <- "work";
+						destination <- one_of (region_node - myself.home_region);
+						// random duration with mean 1.2: mostly 1 day, sometimes 2
+                		duration <- flip(0.2) ? 2 : 1;
+						myself.travel_plan[work_day] <- self;
+					}
+					break;
+				}
+			}
+		}
+		if debug_write {write "[Work] " + num_professional_trips + "x";}
+		
+		// Vacation(misc) trips: 1 / week, on average 5.2 days long
+		int num_vacation_trips <- poisson(51);
+		loop times: num_vacation_trips {
+			loop i from: 1 to: 500 {
+				int leisure_day <- rnd(0, 365);
+				if (travel_plan[leisure_day] = nil) {
+					create trip {
+						type <- "leisure";
+						destination <- one_of(region_node - myself.home_region);
+                    	duration <- poisson(4.2) + 1;
+						myself.travel_plan[leisure_day] <- self;						
+					}
+					break;
+				}
+			}
+		}
+		if debug_write {write "[Vacation] " + num_vacation_trips + "x\nDays: " + travel_plan;}
+	}
+	
+	reflex manage_travel {
+        // CASE 1: Start a new trip
+        if (active_trip = nil and travel_plan[cycle] != nil) {
+            active_trip <- travel_plan[cycle];
+            remaining_days <- active_trip.duration;
+            activity <- active_trip.type;
+            location <- active_trip.destination.location;
+        	if debug_write {write "Day " + cycle + ", travelling to " + active_trip.destination.name;}
+            
+            // Register infrastructure usage on departure
+            do execute_trip(home_region, active_trip.destination);
+            
+            if debug_write { write "Starting " + activity + " trip to " + active_trip.destination.name + " for " + remaining_days + " days"; }
+        } 
+        
+        // CASE 2: Currently on a trip
+        if (active_trip != nil) {
+            remaining_days <- remaining_days - 1;
+            //if debug_write {write "Day " + cycle + ", at " + location;}
+            
+            // CASE 3: Trip ends today
+            if (remaining_days <= 0) {
+                if debug_write { write "Trip ended. Returning home to " + home_region.name; }
+                
+                // Register infrastructure usage on return
+                do execute_trip(active_trip.destination, home_region);
+                
+                location <- home_region.location;
+                active_trip <- nil;
+                activity <- "local";
+            }
+        }
+    }
+	
+	action execute_trip(region_node origin, region_node destination) {
+		if (origin != destination) {
+			path travel_path <- path_between(transport_network, origin, destination);
+			if (travel_path != nil) {
+				list<transport_link> used_segments <- list<transport_link> (travel_path.edges);
+				ask used_segments {
+					daily_passengers <- daily_passengers + 1;
+				}
+			}
+		}
+	}
+	aspect base {
+		if debug_write{
+			draw circle(10000) color: #yellow;	
+		}
+    }
+}
+
+experiment france_simulation type: gui {
 	output {
 		display map type: java2D {
 			species fronteers aspect: base;
+			species mountain aspect: base;
 			species region_node aspect: base;
 			species transport_link aspect: base;
+			species citizen aspect: base;
+			
+			graphics "Timer" {
+				draw "Day: " + cycle at: {world.shape.width * 0.02, world.shape.height * 0.05} color: #black font: font("Arial", 18, #bold);
+			}
+		}
+		display charts refresh: every(1#cycles) {
+			chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} y_log_scale: true {
+				data "At home" value: citizen count (each.activity = "local") color: #green;
+				data "Work Trip" value: citizen count (each.activity = "work") color: #red;
+				data "Leisure Trip" value: citizen count (each.activity = "leisure") color: #blue;
+			}
+			chart "Cumulative km usage / day" type: series size: {0.5, 0.5} position: {0, 0.5} y_log_scale: false {
+				data "Train" value: km_usage["train"] color: #blue;
+			}
+			chart "Vehicles needed" type: series size: {0.5, 0.5} position: {0.5, 0.5} {
+				data "Trains" value: vehicles_needed["train"] color: #blue;
+			}
 		}
 	}
 }

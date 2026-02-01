@@ -131,7 +131,6 @@ global {
 	    loop v over: vehicle_types {
 	        save ["total_km_" + v, total_km_usage[v]] to: "city_profile.csv" rewrite: false;
     	}
-	
 	    write "Simulation finished. Profile saved to city_profile.csv";
 	    do pause;
 	}
@@ -147,7 +146,7 @@ species citizen {
     point errand_location <- nil;
     point leisure_location <- nil;
 
-    string activity <- "sleep"; // sleep, awake, work, leisure, errand
+    string activity <- "sleep"; // sleep, idle, work, leisure, errand
     string current_vehicle <- "walk";
 
     bool visible_agent;
