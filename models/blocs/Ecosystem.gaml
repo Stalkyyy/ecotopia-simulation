@@ -121,7 +121,7 @@ species ecosystem parent:bloc {
     }
     
     
-    action tick(list<human> pop) {
+    action tick(list<human> pop, list<mini_ville> cities) {
         do regenerate_resources();
         do absorb_ges();
         do collect_last_tick_data();
@@ -182,6 +182,14 @@ species ecosystem parent:bloc {
     	ges_stock <- ges_stock + (emissions_gCO2e / 1000000.0);  // Convert gCO2e to kg
     	tick_ges_received_eco["total"] <- tick_ges_received_eco["total"] + emissions_gCO2e;
 	}
+	
+	/*
+     * Receive water reinjected by other blocs (e.g. cooling water from energy production)
+     */
+    action receive_water_reinjection(float water_l) {
+        water_stock_l <- min(water_stock_l + water_l, water_max_stock_l);
+    }
+	
     
     action collect_last_tick_data{
         if(cycle > 0){
