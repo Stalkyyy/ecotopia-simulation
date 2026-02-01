@@ -30,7 +30,6 @@ species mini_ville {
 	int wood_housing_units <- 0;
 	int modular_housing_units <- 0;
 	float housing_capacity <- 0.0;
-	int population_count <- 0;
 	float remaining_buildable_area <- buildable_area;
 
 	init{
@@ -46,37 +45,6 @@ species mini_ville {
 			+ (modular_housing_units * capacity_per_unit["modular"]);
 		
 		// debug log
-		if (index mod 50 = 0) {
-			write "MiniVille " + index + " initialized. Housing cap: " + housing_capacity; 
-		}
-	}
-	
-	aspect population_map {
-		// Visualization of population density
-		// Map value to color: 0 = Blue, Max = Green
-		float max_expected <- 250000.0; 
-		float val <- min(1.0, population_count / max_expected);
-		
-		// Interpolate between Blue (0.66) and Green (0.33)
-		rgb col <- hsb(0.66 - (val * 0.33), 0.8, 0.9);
-		
-		// Layout in a grid if no location set (for abstract visualization)
-		point pos <- location;
-		if (location.x = 0 and location.y = 0) {
-			// Grid layout parameters
-			int cols <- 25; 
-			float step <- 75.0; // Scaled for ~2000m world
-			float box_size <- 65.0;
-			
-			// Normalize index to ensure we stay within the visible grid (25x25=625 cells)
-			// even if agent indices are large
-			int visual_idx <- index mod 625; 
-			
-			pos <- { (visual_idx mod cols) * step + (step/2), (visual_idx / cols) * step + (step/2) };
-			
-			draw square(box_size) at: pos color: col border: #black;
-		} else {
-             draw square(100) at: location color: col border: #black;
-        }
+		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
 	}
 }
