@@ -98,9 +98,6 @@ global {
     		if (vehicles_needed[v] > max_vehicles_needed[v]) {
     			max_vehicles_needed[v] <- vehicles_needed[v];
     		}
-    	}
-    	// reset vehicles needed and usage
-    	loop v over: vehicle_types{
 	        km_usage[v] <- 0.0;
 	        vehicles_needed[v] <- 0;
     	}
@@ -113,14 +110,29 @@ global {
     // -----------------------
     // STOP AFTER 1 WEEK
     // -----------------------
-    reflex stop_simulation when: cycle >= simulation_duration {
-    	save ["Vehicle Type", "Max Needed"] to: "max_values_mini_ville.csv" rewrite: true;
-    	loop v over: max_vehicles_needed.keys {
-    		save [v, max_vehicles_needed[v]] to: "max_values_mini_ville.csv" rewrite: false;
-    	}
-    	write "Simulation finished. Peaks saved to max_values.csv";
-        do pause;
-    }
+    // In CitySimulation global block
+reflex stop_simulation when: cycle >= simulation_duration {
+    // --- 1. Calculate the final ratios ---
+    // Ensure population_size isn't zero to avoid division errors
+    float pop_size_safe <- (population_size = 0) ? 1.0 : float(population_size);
+
+    float peak_taxis_per_1k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 1000.0;
+    float peak_bikes_per_1k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 1000.0;
+    float peak_minibus_fleet_per_1k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 1000.0;
+    
+    // --- 2. Export to CSV (Corrected) ---
+
+    // Step A: Write the header. This creates/overwrites the file.
+    save ["parameter", "value"] to: "city_profile.csv" rewrite: true;
+    
+    // Step B: APPEND the data rows. 'rewrite: false' prevents overwriting.
+    save ["peak_taxis_per_1k", peak_taxis_per_1k_citizens] to: "city_profile.csv" rewrite: false;
+    save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
+    save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
+
+    write "Simulation finished. Profile saved to city_profile.csv";
+    do pause;
+}
 }
 
 species citizen {
@@ -130,19 +142,36 @@ species citizen {
     // -----------------------
     point home;
     point work;
+    point errand_location <- nil;
+    point leisure_location <- nil;
 
-    string activity <- "sleep"; // sleep, work, leisure, travel
+    string activity <- "sleep"; // sleep, awake, work, leisure, errand
     string current_vehicle <- "walk";
 
     bool visible_agent;
     
-    // Schedule
+    map<int, list<string>> weekly_plan; 
+    
     bool is_working_today <- false;
+    bool is_errand_today <- false;
+    
+    string leisure_type; // "external", "outskirts", "home"
+    int leisure_start_hour <- -1;
+    int leisure_end_hour <- -1;
+    
     int start_work_hour <- -1;
     int end_work_hour <- -1;
-    
-    int wake_up_hour <- -1; // non workers wake up hour
+    int errand_start_hour <- -1;
+    int errand_end_hour <- -1;
+    int wake_up_hour <- -1;
     int bed_time_hour <- -1;
+    
+    
+    // helper: check if [s2, e2] overlaps with existing [s1, e1]
+    bool overlaps(int s1, int e1, int s2, int e2) {
+        if (s1 = -1 or s2 = -1) { return false; }
+        return (s2 < e1 and e2 > s1);
+    }
     
 
     // -----------------------
@@ -154,106 +183,186 @@ species citizen {
         location <- home;
         visible_agent <- (rnd(1.0) <= display_ratio);
         
-        do plan_daily_schedule;
+        do plan_weekly_schedule;
+        do prepare_daily_variables;
+        
+        activity <- "sleep";
     }
     
-    action plan_daily_schedule {
-    	// bedtime: gradual 20~23h
-    	bed_time_hour <- int(max(20, min(23, gauss(21.5, 1.5))));
-    	
-    	// Work/Leisure (0.5 <- 3.5 days per week of work on average)
-    	if (flip(0.5)) {
-    		is_working_today <- true;
-    		
-    		// gaussian distribution for start time
-    		// IRL the peaks are at 7:00 and 17:00 but ecotopia -> 5.5h / day -> 9:15 to 14:45 -> simplification 9:30 to 14:30
-    		float start_time <- gauss(9.5, 1.5);
-    		start_work_hour <- int(max(4, min(14, start_time))); // clamp 4am~2pm
-    		
-    		// Work duration ~5h
-    		end_work_hour <- start_work_hour + 5; 
-    		
-    	} else {
-    		is_working_today <- false;
-    		
-    		// mean 9:00, min 6:00, max 11:00
-    		wake_up_hour <- int(max(6, min(11, gauss(9.0, 1.0))));
-    	}
-    }
-    
-    
-    // -----------------------
-    // DAILY PLANNER
-    // -----------------------
-    //reflex plan_the_day when: current_date.hour = 0 {
-    //	activity <- "sleep";
-    //	
-    //	// 3.5 days per week on average -> 0.5 probability
-    //	if (flip(0.5)) {
-    //		is_working_today <- true;
-    //		
-    //		// gaussian distribution for start time
-    //		// IRL the peaks are at 7:00 and 17:00 but ecotopia -> 5.5h / day -> 9:30 to 14:30
-    //		// avg: 09:30 std: 1.5 hours (
-    //		float start_time <- gauss(8.5, 1.5);
-    //		start_work_hour <- int(max(4, min(14, start_time))); // clamp 4am~2pm
-    //		
-    //		// work for 5.5h ≈ 6
-    //		end_work_hour <- start_work_hour + 6; // suppose it's exactly 6, it will look like a gaussian anyway
-    //	} else {
-    //		is_working_today <- false;
-    //		activity <- "leisure"; // TODO travel sometimes ?
-    //	}
-    //}
-    
-    reflex new_day_planning when: current_date.hour = 0 {
-    	do plan_daily_schedule;
-    }
-    
+    // We decide what we do (work, errand) on each day at the start
+    action plan_weekly_schedule {
+        // Work days: 3.5 days/week avg -> 3 or 4 days
+        int nb_work_days <- flip(0.5) ? 3 : 4;
+        list<int> possible_days <- [0, 1, 2, 3, 4, 5, 6];
+        list<int> my_work_days <- nb_work_days among possible_days;
+        
+		// Errand day (0.5 per week per person -> half the pop has 1 errand)
+        int my_errand_day <- -1;
+        if (flip(0.5)) {
+            list<int> non_work_days <- possible_days - my_work_days;
+            if (length(non_work_days) > 0) {
+                my_errand_day <- any(non_work_days);
+            }
+        }
 
-    // -----------------------
-    // SIMPLE PLACEHOLDER ACTIVITY LOGIC
-    // -----------------------
-    //reflex update_activity {
-    //    if (current_date.hour < 7) {
-    //        activity <- "sleep";
-    //    } else if (current_date.hour >= 8 and current_date.hour <= 17) {
-    //        activity <- "work";
-    //    } else {
-    //        activity <- "leisure";
-    //    }
-    //}
+        // fill plan map
+        loop d from: 0 to: 6 {
+            list<string> day_tasks <- [];
+            if (d in my_work_days) { day_tasks << "work"; }
+            if (d = my_errand_day) { day_tasks << "errand"; }
+            
+            weekly_plan[d] <- day_tasks;
+        }
+        //write my_work_days + weekly_plan;
+    }
+    
+    // executed everyday when the citizen wakes up, decides the time when he works/errand/loisir
+    action prepare_daily_variables {
+        int day_index <- (current_date.day - 1) mod 7;
+        list<string> today_tasks <- weekly_plan[day_index];
+        
+        is_working_today <- ("work" in today_tasks);
+        is_errand_today <- ("errand" in today_tasks);
+        
+        start_work_hour <- -1; end_work_hour <- -1;
+        errand_start_hour <- -1; errand_end_hour <- -1;
+        leisure_start_hour <- -1; leisure_end_hour <- -1;
+        
+        
+        wake_up_hour <- int(max(6, min(11, gauss(9.0, 1.0))));
+        float raw_bedtime <- gauss(23.5, 2.0);
+        bed_time_hour <- int(max(20, raw_bedtime));
+        //write "bedtime: " + bed_time_hour;
+        if (bed_time_hour >= (wake_up_hour + 24)) { bed_time_hour <- wake_up_hour + 23; }
+        
+        // Work: 5h
+        if (is_working_today) {
+            loop i from: 1 to: 30 {
+                int start_t <- int(gauss(9.5, 1.5));
+                int end_t <- start_t + 5;
+                if (start_t >= wake_up_hour and end_t <= bed_time_hour) {
+                    start_work_hour <- start_t;
+                    end_work_hour <- end_t;
+                    break;
+                }
+            }
+            //write "work: " + start_work_hour + " - " + end_work_hour;
+        }
+        
+        // Errand: 1~2h
+        if (is_errand_today) {
+            loop i from: 1 to: 30 {
+                int dur <- flip(0.5) ? 1 : 2;
+                int start_t <- int(gauss(15.0, 3.0));
+                int end_t <- start_t + dur;
+                
+                if (start_t >= wake_up_hour and end_t <= bed_time_hour) {
+                    if (!overlaps(start_work_hour, end_work_hour, start_t, end_t)) {
+                        errand_start_hour <- start_t;
+                        errand_end_hour <- end_t;
+                        break;
+                    }
+                }
+            }
+            if errand_start_hour = -1 {
+            	write "[WARNING] Could not find place for errand ";
+            }
+            //write "errand: " + errand_start_hour + " - " + errand_end_hour;
+        }
+        
+        // Leisure: 1~5h (2h avg)
+        float leisure_roll <- rnd(1.0);
+        if (leisure_roll < 0.5) { leisure_type <- "external"; } // ignored in scale 3
+        else if (leisure_roll < 0.8) { leisure_type <- "outskirts"; }
+        else { leisure_type <- "home"; }
+
+        loop i from: 1 to: 300 {
+        	int dur <- int(min(max(1, gauss(2.0, 2.0))), 5);
+            int start_t <- int(gauss(17.0, 5.0)); // à 17h
+            int end_t <- start_t + dur;
+            
+            if (start_t >= wake_up_hour and end_t <= bed_time_hour) {
+                bool conflict_work <- overlaps(start_work_hour, end_work_hour, start_t, end_t);
+                bool conflict_errand <- overlaps(errand_start_hour, errand_end_hour, start_t, end_t);
+                
+                if (!conflict_work and !conflict_errand) {
+                    leisure_start_hour <- start_t;
+                    leisure_end_hour <- end_t;
+                    break;
+                }
+            }
+        }
+        if leisure_start_hour = -1 {
+        	write "[WARNING] Could not find place for leisure";
+        }
+        //write "leisure: " + leisure_start_hour + " - " + leisure_end_hour;
+        
+        if (leisure_type = "outskirts") {
+            float dist <- rnd(city_radius, surroundings_radius);
+            float angle <- rnd(360.0);
+            leisure_location <- {center.x + dist * cos(angle), center.y + dist * sin(angle)};
+        } else {
+            leisure_location <- home;
+        }
+    }
+    
+    
     
     // -----------------------
     // ACTIVITY LOGIC
     // -----------------------
     
-    // sleep -> leisure
-    reflex wake_up_leisure when: !is_working_today and current_date.hour = wake_up_hour and activity = "sleep" {
-    	activity <- "leisure";
+    reflex wake_up when: current_date.hour = wake_up_hour and activity = "sleep" {
+        activity <- "awake";
+        do prepare_daily_variables;
     }
     
-    // home -> work
-    reflex commute_to_work when: is_working_today and current_date.hour = start_work_hour and location = home {
-    	activity <- "work";
-    	
-    	do add_travel_to_total(vehicle_usage(home, work, create_vehicle_choice_initial_usage()));
-    	location <- work;
+    reflex go_to_work when: is_working_today and current_date.hour = start_work_hour and activity != "work" {
+        activity <- "work";
+        do add_travel_to_total(vehicle_usage(location, work, create_vehicle_choice_initial_usage()));
+        location <- work;
+    }
+    reflex leave_work when: is_working_today and current_date.hour = end_work_hour and activity = "work" {
+        activity <- "awake";
+        do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+        location <- home;
     }
     
-    // work -> home
-    reflex commute_to_home when: is_working_today and current_date.hour = end_work_hour and location = work {
-    	activity <- "leisure";
-    	
-    	do add_travel_to_total(vehicle_usage(work, home, create_vehicle_choice_initial_usage()));
-    	location <- home;
+    reflex start_errand when: is_errand_today and current_date.hour = errand_start_hour and activity = "awake" {
+        activity <- "errand";
+        errand_location <- city_agent.get_random_position_in_city();
+        do add_travel_to_total(vehicle_usage(location, errand_location, create_vehicle_choice_initial_usage()));
+        location <- errand_location;
+    }
+    reflex end_errand when: is_errand_today and current_date.hour = errand_end_hour and activity = "errand" {
+        activity <- "awake";
+        do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+        location <- home; 
+        errand_location <- nil;
     }
     
-    // leisure -> sleep
-    reflex go_to_sleep when: current_date.hour = bed_time_hour and activity != "sleep" {
-    	activity <- "sleep";
-    	// Note: We don't need to teleport home because 'commute_to_home' already sent them home.
-    	// If they are strictly "leisure" agents, they are at home (or we assume they are).
+    reflex start_leisure when: current_date.hour = leisure_start_hour and activity = "awake" {
+        activity <- "leisure";
+        if (leisure_type = "outskirts") {
+            do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
+            location <- leisure_location;
+        }
+    }
+    reflex end_leisure when: current_date.hour = leisure_end_hour and activity = "leisure" {
+        activity <- "awake";
+        if (location != home) {
+            do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+            location <- home;
+        }
+        leisure_location <- nil;
+    }
+    
+    reflex go_to_sleep when: current_date.hour = (bed_time_hour mod 24) and activity != "sleep" {
+        if (location != home) {
+            do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+            location <- home;
+        }
+        activity <- "sleep";
     }
     
 
@@ -325,30 +434,24 @@ species citizen {
     		vehicles_needed["taxi"] <- vehicles_needed["taxi"] + 1;
     	}
     }
-    
-//  reflex travel when: activity = "work" and location != work {
-//
-//      do add_travel_to_total(vehicle_usage(location, work, create_vehicle_choice_initial_usage()));
-//     
-//      location <- work;
-//  }
 
     // -----------------------
     // DISPLAY COLOR BY ACTIVITY
     // -----------------------
     rgb agent_color {
         switch activity {
-            match "sleep" {return rgb(120, 120, 255);}
-            match "work" {return rgb(255, 80, 80);}
-            match "leisure" {return rgb(80, 255, 120);}
-            match "travel" {return rgb(255, 200, 80);}
+            match "sleep"   { return rgb(120, 120, 255); } // Blue
+            match "awake"   { return rgb(155, 155, 155); } // Gray
+            match "work"    { return rgb(255, 80, 80); }  // Red
+            match "errand"  { return rgb(255, 200, 80); } // Orange/Yellow
+            match "leisure" { return rgb(80, 255, 120); } // Green
             default {return rgb(200, 200, 200);}
         }
     }
 
     aspect base {
         if (visible_agent) {
-            draw circle(5) color: agent_color();
+            draw circle(10) color: agent_color();
         }
     }
 }
@@ -517,7 +620,7 @@ species city {
 	
 	aspect base {
         // surroundings
-        draw circle(surroundings_radius) at: location + {0,0,-3} color: rgb(200,255,200) border: true;
+        draw circle(surroundings_radius) at: location + {0,0,-3} color: rgb(150,200,150) border: true;
 
         // city core
         draw circle(city_radius) at: location + {0,0,-2} color: rgb(240,240,240) border: true;
@@ -553,9 +656,10 @@ experiment city_simulation type: gui {
 	        // -----------------------
 	        chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} {
 	            data "Sleep" value: citizen count (each.activity = "sleep") color: rgb(120, 120, 255);
+	            data "Awake" value: citizen count (each.activity = "awake") color: rgb(155, 155, 155);
 	            data "Work" value: citizen count (each.activity = "work") color: rgb(255, 80, 80);
+	            data "Errand" value: citizen count (each.activity = "errand") color: rgb(255, 200, 80);
 	            data "Leisure" value: citizen count (each.activity = "leisure") color: rgb(80, 255, 120);
-	            data "Travel" value: citizen count (each.activity = "travel") color: rgb(255, 200, 80);
 	        }
 
 	        // -----------------------
