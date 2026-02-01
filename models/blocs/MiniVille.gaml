@@ -63,12 +63,20 @@ species mini_ville {
 		// Layout in a grid if no location set (for abstract visualization)
 		point pos <- location;
 		if (location.x = 0 and location.y = 0) {
-			int cols <- 25; // approx sqrt(550)
-			float step <- 50.0;
-			pos <- { (index mod cols) * step, (index / cols) * step };
-		}
-		
-		draw square(40) at: pos color: col border: #black;
-		// draw string(int(population_count/1000) + "k") at: pos color: #white size: 10 anchor: #center;
+			// Grid layout parameters
+			int cols <- 25; 
+			float step <- 75.0; // Scaled for ~2000m world
+			float box_size <- 65.0;
+			
+			// Normalize index to ensure we stay within the visible grid (25x25=625 cells)
+			// even if agent indices are large
+			int visual_idx <- index mod 625; 
+			
+			pos <- { (visual_idx mod cols) * step + (step/2), (visual_idx / cols) * step + (step/2) };
+			
+			draw square(box_size) at: pos color: col border: #black;
+		} else {
+             draw square(100) at: location color: col border: #black;
+        }
 	}
 }

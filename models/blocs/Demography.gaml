@@ -186,6 +186,7 @@ species residents parent:bloc{
 			do update_housing_demand; // Enabled housing demand update
 			
 			do update_miniville_populations;
+			do debug_miniville_populations;
 		}
 		// write "tick" + last_consumed;
 	}
@@ -248,11 +249,30 @@ species residents parent:bloc{
 			population_count <- 0;
 		}
 		ask individual {
+			// Fallback: Assign home if missing for any reason
+			if (home = nil and not empty(mini_ville)) {
+				home <- one_of(mini_ville);
+			}
+
 			if (home != nil) {
 				home.population_count <- home.population_count + pop_per_ind;
 			}
 		}
     }
+
+	action debug_miniville_populations {
+		if (cycle mod 12 = 0) { // once a year
+			int total_mapped_pop <- 0; 
+			ask mini_ville {
+				total_mapped_pop <- total_mapped_pop + population_count;
+				// Debug log every 100 mini_villes
+				if (index mod 100 = 0) {
+					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count;
+				}
+			}
+			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * pop_per_ind);
+		}
+	}
     
     action update_food_demand {
 		float target_intake <- 2000.0;
@@ -983,6 +1003,14 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 			}
 			
 		}
+		
+		/* 
+		display MiniVille_Distribution type: java2D { 
+			graphics "World_Background" {
+				draw shape color: #white border: #red;
+			}
+			species mini_ville aspect: population_map;
+		}*/
 	}
 }
 
