@@ -6,7 +6,6 @@
 model Demography
 
 import "../API/API.gaml"
-import "MiniVille.gaml"
 
 /**
  * We define here the global variables of the bloc. Some are needed for the displays (charts, series...).
@@ -155,8 +154,6 @@ species residents parent:bloc{
 		create residents_consumer number:1 returns:consumers;
 		producer <- first(producers);
 		consumer <- first(consumers);
-		
-		// In standalone, we might want to do an initial pass, but tick handles it.
 	}
 	
 	/* updates the population every tick */
@@ -836,18 +833,12 @@ species residents parent:bloc{
 	int ticks_before_birthday <- 0;
 	int delay_next_child <- 0;
 	int child <- 0;
-	mini_ville home <- nil;
 	
 	int ticks_counter <- 0;
 	
 	init{
 		gender <- one_of ([female_gender, male_gender]); // pick a gender randomly
 	    ticks_before_birthday <- rnd(nb_ticks_per_year); // set a random birth date in the year (uniformly)
-	    
-	    if (home = nil and not empty(mini_ville)) {
-	    	home <- one_of(mini_ville);
-	    }
-	    
 	    // set initial birth & death probabilities :
 	    p_birth <- get_p_birth(); 
 		p_death <- get_p_death();
