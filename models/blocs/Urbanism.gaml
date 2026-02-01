@@ -45,6 +45,8 @@ global{
 	// Construction pipeline timing (interpretation: 1 tick = 1 month)
 	int build_duration_months_default <- 6;
 	int max_waiting_checks_per_tick <- 200; // try to start up to N waiting orders per tick
+	int max_builds_started_per_tick <- 50; // cap number of mini-villes that can transition to 'building' per tick
+	int builds_started_count_tick <- 0; // debug + gating for max_builds_started_per_tick
 
 	// Debug / diagnostics
 	bool prev_totals_initialized <- false;
@@ -152,11 +154,12 @@ species urbanism parent: bloc{
 		do sync_constructible_surface(cities);
 
 		// Try to start some orders that are waiting for resources (resource dependence)
-		int started_from_waiting <- 0;
+		int checked_from_waiting <- 0;
 		loop c over: (cities where (each.construction_state = "waiting_resources")) {
-			if(started_from_waiting >= max_waiting_checks_per_tick) { break; }
-			do try_start_city_order(c);
-			started_from_waiting <- started_from_waiting + 1;
+			if(checked_from_waiting >= max_waiting_checks_per_tick) { break; }
+			if(builds_started_count_tick >= max_builds_started_per_tick) { break; }
+			bool ok <- try_start_city_order(c);
+			checked_from_waiting <- checked_from_waiting + 1;
 		}
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
@@ -257,7 +260,8 @@ species urbanism parent: bloc{
 				tick_orders_created_scaled["modular"] <- tick_orders_created_scaled["modular"] + float(modular_plan);
 
 					// Try to reserve resources immediately so construction can start in the same tick when possible.
-					if(try_start_city_order(target_city)){
+					// Respect the per-tick cap to avoid mass-start artifacts when many cities request at once.
+					if(builds_started_count_tick < max_builds_started_per_tick and try_start_city_order(target_city)){
 						write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
 							+ ") in mini_ville " + string(target_city.index);
 					}
@@ -294,10 +298,15 @@ species urbanism parent: bloc{
 		if(c.construction_state != "waiting_resources"){ return false; }
 		if(length(c.pending_demand) = 0){ return false; }
 
+		// Enforce per-tick cap on starts (prevents 'instant mass build' artifacts at scale)
+		if(builds_started_count_tick >= max_builds_started_per_tick){ return false; }
+
 		map<string, unknown> info <- producer.produce(c.pending_demand);
 		if(bool(info["ok"])) {
 			ask c { do start_build; }
-			// count as started builds this tick (still not completed)
+			builds_started_count_tick <- builds_started_count_tick + 1;
+
+			// Count as started builds this tick (still not completed)
 			tick_constructions["wood"] <- tick_constructions["wood"] + c.pending_wood_units;
 			tick_constructions["modular"] <- tick_constructions["modular"] + c.pending_modular_units;
 			tick_constructions_scaled["wood"] <- tick_constructions_scaled["wood"] + float(c.pending_wood_units);
@@ -408,6 +417,7 @@ species urbanism parent: bloc{
 
 	action reset_tick_counters{
 		tick_resources_used <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
+		builds_started_count_tick <- 0;
 		tick_constructions["wood"] <- 0;
 		tick_constructions["modular"] <- 0;
 		tick_constructions_scaled["wood"] <- 0.0;

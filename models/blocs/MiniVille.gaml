@@ -54,7 +54,15 @@ species mini_ville {
 	int pending_build_duration_months <- 0;
 	int build_months_remaining <- 0;
 
-	init{
+	
+
+	// --- Order queue (v1: FIFO, no cancellation) ---
+	list<int> queued_wood_units <- [];
+	list<int> queued_modular_units <- [];
+	list<float> queued_surface <- [];
+	list<map<string,float>> queued_demand <- [];
+	list<int> queued_duration_months <- [];
+init{
 		// initialize with partial usage of buildable area
 		used_buildable_area <- buildable_area * initial_fill_ratio;
 		remaining_buildable_area <- max(0.0, buildable_area - used_buildable_area);
@@ -72,11 +80,16 @@ species mini_ville {
 
 	// Register an order (does NOT consume resources).
 	action set_construction_order(int wood_units, int modular_units, float surface, map<string, float> demand, int duration_months){
-		// v1: only accept a new order if idle
+		// v1: if a build is already in progress, enqueue (FIFO)
 		if(construction_state != "idle"){
+			add item:max(0, wood_units) to: queued_wood_units;
+			add item:max(0, modular_units) to: queued_modular_units;
+			add item:max(0.0, surface) to: queued_surface;
+			add item:copy(demand) to: queued_demand;
+			add item:max(1, duration_months) to: queued_duration_months;
 			return;
 		}
-		pending_wood_units <- max(0, wood_units);
+pending_wood_units <- max(0, wood_units);
 		pending_modular_units <- max(0, modular_units);
 		pending_surface <- max(0.0, surface);
 		pending_demand <- copy(demand);
@@ -144,6 +157,24 @@ species mini_ville {
 		if(build_months_remaining <= 0){
 			do commit_build;
 		}
+	}
+
+
+	// If idle and some queued orders exist, load the next one (FIFO).
+	reflex dequeue_next_order when: construction_state = "idle" and length(queued_wood_units) > 0 {
+		int w <- queued_wood_units at 0;
+		int m <- queued_modular_units at 0;
+		float s <- queued_surface at 0;
+		map<string,float> d <- queued_demand at 0;
+		int dur <- queued_duration_months at 0;
+
+		remove from: queued_wood_units index: 0;
+		remove from: queued_modular_units index: 0;
+		remove from: queued_surface index: 0;
+		remove from: queued_demand index: 0;
+		remove from: queued_duration_months index: 0;
+
+		do set_construction_order(w, m, s, d, dur);
 	}
 
 	// Simple visualization used by Urbanism display MiniVille_state_map
