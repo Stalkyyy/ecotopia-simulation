@@ -47,10 +47,10 @@ global{
 	];
 	
 	/* Overproduction factor for stock forecasting */
-	float overproduction_factor <- 0.05;
+	//float overproduction_factor <- 0.05;
 	
 	/* Percentage of stock utilization */
-	float stock_use_rate <- 1.0;
+	//float stock_use_rate <- 1.0;
 	
 	/* Initialization of the stock of agricultural production */
 	map<string, list<map<string, float>>> stock <- [
@@ -132,8 +132,8 @@ global{
     int current_season <- 0;
     int cpt_tick <- 0;
     
-    /*map<string, float> seasonal_overproduction <- [
-	    "spring"::0.30,
+    map<string, float> seasonal_overproduction <- [ // REVOIR CES DONNEES
+	    "spring"::0.20,
 	    "summer"::0.10,
 	    "autumn"::0.15,
 	    "winter"::0.0
@@ -144,7 +144,7 @@ global{
 	    "summer"::0.2,
 	    "autumn"::0.1,
 	    "winter"::0.8
-	];*/
+	];
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -305,14 +305,29 @@ species agricultural parent:bloc{
     	}    	
     }*/
     
+    float get_seasonal_overproduction{
+	    string s <- seasons[current_season];
+	    return seasonal_overproduction[s];
+	}
+	
+	float get_seasonal_stock_use{
+	    string s <- seasons[current_season];
+	    return seasonal_stock_use[s];
+	}
+    
     
     float get_stock_to_consume(string p, float demand){
-		if empty(stock[p]) or stock_use_rate <= 0.0 or demand <= 0.0{
+    	float seasonal_stock_rate <- get_seasonal_stock_use();
+		/*if empty(stock[p]) or stock_use_rate <= 0.0 or demand <= 0.0{
+			return 0.0;
+		}*/
+		if empty(stock[p]) or seasonal_stock_rate <= 0.0 or demand <= 0.0{
 			return 0.0;
 		}
 		
 		float stock_to_use <- 0.0;
-		float desired_from_stock <- demand * stock_use_rate;
+		//float desired_from_stock <- demand * stock_use_rate;
+		float desired_from_stock <- demand * seasonal_stock_rate;
 		
 		// We sort the stock according to the age (descending) of the resources to consume the oldest ones first
 		// FIFO operation
@@ -516,15 +531,18 @@ species agricultural parent:bloc{
 		        if(c = "kg_meat" or c = "kg_vegetables" or c = "kg_cotton"){
 		
 		            float from_stock <- 0.0;
+		            float seasonal_overprod <- 0.0;
 		            ask one_of(agricultural){
 		                from_stock <- get_stock_to_consume(c, demand[c]);
+		                seasonal_overprod <- get_seasonal_overproduction();
 		            }
 		
 		            float to_produce <- demand[c] - from_stock;
 		            if (to_produce < 0.0) { to_produce <- 0.0; }
 		
 		            // livré visé (surproduction)
-		            float deliver <- to_produce * (1 + overproduction_factor);
+		            //float deliver <- to_produce * (1 + overproduction_factor);
+		            float deliver <- to_produce * (1 + seasonal_overprod);
 		            
 					ask one_of(agricultural) {
 					    production_this_tick[c] <- production_this_tick[c] + deliver;
@@ -697,8 +715,8 @@ species agricultural parent:bloc{
 experiment run_agricultural type: gui {
 	
 	//parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
-	parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
-	parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
+	//parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
+	//parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
 	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
 	
 	output {
