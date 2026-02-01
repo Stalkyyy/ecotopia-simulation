@@ -731,7 +731,7 @@ species agricultural parent:bloc{
 		        animals_obtained <- hunt_request(animals_needed);
 		    }
 		    hunted_animals_kg <- animals_obtained * kg_per_animal;
-		}	
+		}
 		
 		
 		action application_fertilizer(string type){
