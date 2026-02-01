@@ -31,7 +31,7 @@ global {
     float surroundings_radius <- 2000.0;
     city city_agent;
     bus_system bus_agent;
-    //train_system train_agent; 
+    train_system train_agent; 
 
     // -----------------------
     // POPULATION
@@ -76,8 +76,12 @@ global {
     init {
     	create city;
     	city_agent <- any(city);
+    	
     	create bus_system;
     	bus_agent <- any(bus_system);
+    	
+    	create train_system;
+    	train_agent <- any(train_system);
         create citizen number: population_size;
     }
 
@@ -97,6 +101,8 @@ global {
 		loop k over: bus_agent.bus_arc_flow.keys {
 		    bus_agent.bus_arc_flow[k] <- 0;
 		}
+		
+		// we reset trains inside train
     }
 
     // -----------------------
@@ -341,6 +347,7 @@ species citizen {
             location <- leisure_location;
         } else if (leisure_type = "external") {
         	do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
+        	ask train_agent { do register_passenger_out; }
         	location <- point(rnd(2000.0)+1000, rnd(1000.0)+4200); // only train station distance, other location to visualize
         }
     }
@@ -348,8 +355,10 @@ species citizen {
         activity <- "awake";
         if (location != home) {
         	if leisure_type = "external" { // we are outside (to visualize) but we should travel from the train station
+        		ask train_agent { do register_passenger_in; }
         		location <- leisure_location; // tp to train station first
         		do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
+        		location <- home;
         	} else {
         		do add_travel_to_total(vehicle_usage(location, home, create_vehicle_choice_initial_usage()));
             	location <- home;	
@@ -457,6 +466,62 @@ species citizen {
         }
     }
 }
+
+
+
+species train_system {
+	// TRAIN SYSTEM
+	// To track the number of trains we would need for people going outside the city
+	// We don't calculate distances at this scale
+	
+	int train_capacity <- 500; // the max capacity here
+	int outbound_passengers <- 0;
+	int inbound_passengers <- 0;
+	
+	// "50% des loisirs se feront dans un espace naturel accessible : point d’eau (lac, rivière, mer...), forêt, montagne.
+	// Par défaut, si aucune de ces zones n’est accessible à proximité (< 2h de trajet),
+	// on choisira une destination en extérieur en dehors de la mini-ville de résidence."
+	// -> We suppose outside the city here, since there aren't that many places with beach etc and we suppose lake, forest, mountain is outside.
+	
+	action register_passenger_out {
+		outbound_passengers <- outbound_passengers + 1;
+	}
+	
+	action register_passenger_in {
+		inbound_passengers <- inbound_passengers + 1;
+	}
+	
+	reflex compute_train_fleet {
+		// min 1 train/h, more if needed
+		int trains_out <- 0;
+		int trains_in <- 0;
+		
+		if (outbound_passengers > 0) {
+			trains_out <- max(1, ceil(outbound_passengers / train_capacity));
+		} else {
+			trains_out <- 1;
+		}
+		
+		if (inbound_passengers > 0) {
+			trains_in <- max(1, ceil(inbound_passengers / train_capacity));
+		} else {
+			trains_in <- 1;
+		}
+		
+		int total_trains <- trains_out + trains_in;
+		
+		vehicles_needed["train"] <- vehicles_needed["train"] + total_trains;
+		
+		km_usage["train"] <- 0.0; // not tracked at this scale
+		
+		// reset counters for next hour
+		outbound_passengers <- 0;
+		inbound_passengers <- 0;
+		
+	}
+}
+
+
 
 species bus_system {
 	// -----------------------
@@ -668,11 +733,12 @@ experiment city_simulation type: gui {
 	        // -----------------------
 	        // GRAPH 2: KM USAGE
 	        // -----------------------
-	        chart "Vehicle km usage per tick" type: series size: {0.5, 0.5} position: {0, 0.5} {
+	        chart "Vehicle km usage per tick" type: series size: {0.5, 0.5} position: {0, 0.5} y_log_scale:true {
 	            data "Walk" value: km_usage["walk"];
 	            data "Bicycle" value: km_usage["bicycle"];
 	            data "Mini-bus" value: km_usage["mini_bus"];
 	            data "Taxi" value: km_usage["taxi"];
+	            data "Train" value: km_usage["train"] color: #black;
 	        }
 	        
 	        // -----------------------
@@ -683,6 +749,7 @@ experiment city_simulation type: gui {
 	            data "Bicycle" value: vehicles_needed["bicycle"];
 	            data "Mini-bus" value: vehicles_needed["mini_bus"];
 	            data "Taxi" value: vehicles_needed["taxi"];
+	            data "Train" value: vehicles_needed["train"] color: #black;
 	        }
         }
         monitor "Time" value: "Day " + string(current_date.day) + "   " + string(current_date.hour) + ":" + string(current_date.minute);
