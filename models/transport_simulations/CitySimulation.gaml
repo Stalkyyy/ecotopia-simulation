@@ -112,20 +112,17 @@ global {
     // -----------------------
     // In CitySimulation global block
 reflex stop_simulation when: cycle >= simulation_duration {
-    // --- 1. Calculate the final ratios ---
-    // Ensure population_size isn't zero to avoid division errors
     float pop_size_safe <- (population_size = 0) ? 1.0 : float(population_size);
 
     float peak_taxis_per_1k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 1000.0;
     float peak_bikes_per_1k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 1000.0;
     float peak_minibus_fleet_per_1k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 1000.0;
     
-    // --- 2. Export to CSV (Corrected) ---
 
-    // Step A: Write the header. This creates/overwrites the file.
+    // header
     save ["parameter", "value"] to: "city_profile.csv" rewrite: true;
     
-    // Step B: APPEND the data rows. 'rewrite: false' prevents overwriting.
+    // append data
     save ["peak_taxis_per_1k", peak_taxis_per_1k_citizens] to: "city_profile.csv" rewrite: false;
     save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
     save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
