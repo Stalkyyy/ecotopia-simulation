@@ -221,7 +221,7 @@ species agricultural parent:bloc{
 							aged_stock << lot;
 						} else {
 							kg_rotten_stock <- kg_rotten_stock + lot["quantity"];
-							write "Péremption " + p + " : quantité = " + lot["quantity"] + ", âge = " + lot["nb_ticks"];
+							//write "Péremption " + p + " : quantité = " + lot["quantity"] + ", âge = " + lot["nb_ticks"];
 						}
 	    			}
 	    			stock[p] <- aged_stock;
@@ -503,15 +503,17 @@ species agricultural parent:bloc{
 					// application of the hunting
 					if(c = "kg_meat"){
 						do hunting(augmented_demand); 
-						additional_production <- hunted_animals_kg;
+						//additional_production <- hunted_animals_kg;
+						additional_production <- min(hunted_animals_kg, augmented_demand);
 					}
 					// application of the fertilizer
 					if(c = "kg_vegetables"){ 
-						additional_production <- float(application_fertilizer("kg_vegetables"));	
+						//additional_production <- float(application_fertilizer("kg_vegetables"));
+						additional_production <- min(float(application_fertilizer("kg_vegetables")), augmented_demand);	
 					}
 					// application of the fertilizer
 					if(c = "kg_cotton"){
-						additional_production <- float(application_fertilizer("kg_cotton"));
+						additional_production <- min(float(application_fertilizer("kg_cotton")), augmented_demand);
 					}
 					tick_production[c] <- tick_production[c] + additional_production;
 					augmented_demand <- augmented_demand - additional_production;
