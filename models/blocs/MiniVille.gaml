@@ -44,22 +44,22 @@ species mini_ville {
 		// number of km used with this vehicle during a tick
 		// TODO: find the correct starting quantities for 10k people cities
 		"walk"::[
-			"km_per_tick_per_person"::5	//TODO : obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::13060524	//TODO : obtained from the Scale3 simulation
 		],
 		"taxi"::[
-			"quantity"::5,	// TODO : obtained from the Scale3 simulation
+			"quantity"::132,	// TODO : obtained from the Scale3 simulation
 			"lifetime"::138,
-			"km_per_tick_per_person"::3	//TODO : obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::4562008	//TODO : obtained from the Scale3 simulation
 		],
 		"minibus"::[
-			"quantity"::5,	// TODO : obtained from the Scale3 simulation
+			"quantity"::38,	// TODO : obtained from the Scale3 simulation
 			"lifetime"::98,
-			"km_per_tick_per_person"::20	//TODO : obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::5261131	//TODO : obtained from the Scale3 simulation
 		],
 		"bicycle"::[
-			"quantity"::5,	// TODO : obtained from the Scale3 simulation
+			"quantity"::3008,	// TODO : obtained from the Scale3 simulation
 			"lifetime"::84,
-			"km_per_tick_per_person"::20	//TODO : obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::117643345	//TODO : obtained from the Scale3 simulation
 		]
 	];
 	
