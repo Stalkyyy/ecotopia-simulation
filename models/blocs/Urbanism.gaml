@@ -21,11 +21,13 @@ import "../API/API.gaml"
 global{
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
+	float modular_surface_factor <- 1.15; // modular units use more surface than wood (multiplier)
+
 	map<string, int> init_units <- ["wood"::0, "modular"::0]; // will be synced from mini-villes
 
 	// IMPORTANT: use the SAME surface notion as mini-villes (area_per_unit), otherwise you create fake land gaps.
 	// In v1, we use a single footprint per unit. Later, you can refine per typology.
-	map<string, float> surface_per_unit <- ["wood"::area_per_unit_default, "modular"::area_per_unit_default]; // m² per unit
+	map<string, float> surface_per_unit <- ["wood"::area_per_unit_default, "modular"::(area_per_unit_default * modular_surface_factor)]; // m² per unit // m² per unit
 
 	// Resource needs per unit (defaults, to be refined with data)
 	map<string, float> resource_per_unit_wood <- ["kg wood"::24000.0, "kWh energy"::7000.0]; // ~30 m3 @ 800 kg/m3
@@ -44,6 +46,9 @@ global{
 
 	// Construction pipeline timing (interpretation: 1 tick = 1 month)
 	int build_duration_months_default <- 6;
+	int build_duration_months_wood <- 5;
+	int build_duration_months_modular <- 8; // modular is slower (months)
+
 	int max_waiting_checks_per_tick <- 200; // try to start up to N waiting orders per tick
 	int max_builds_started_per_tick <- 50; // cap number of mini-villes that can transition to 'building' per tick
 	int builds_started_count_tick <- 0; // debug + gating for max_builds_started_per_tick
@@ -77,7 +82,15 @@ global{
 	float alpha_mv <- 1.0;
 	bool use_dynamic_alpha <- false; // if true, recompute alpha_mv each tick (can make scaled capacity 'wiggle' with population)
 	bool alpha_mv_frozen_set <- false;
-	float alpha_mv_frozen <- 1.0; // snapshot of alpha_mv_dynamic at first tick when frozen
+	float alpha_mv_frozen <- 1.0;
+	// Debug: artificially inflate demand to make resources scarce (for testing can_produce / reservation)
+	bool debug_scarcity_enabled <- false;
+	float debug_scarcity_multiplier <- 5.0; // multiply resource demands by this factor when debug_scarcity_enabled=true
+	// Decay testing knobs (applied to mini-villes each tick)
+	float decay_rate_annual_param <- 0.002;
+	int decay_period_cycles_param <- 12;
+	bool debug_decay_log_param <- false;
+ // snapshot of alpha_mv_dynamic at first tick when frozen
 	float capacity_real_scaled <- 0.0;
 	float surface_used_scaled <- 0.0;
 	float remaining_buildable_scaled <- 0.0;
@@ -152,6 +165,12 @@ species urbanism parent: bloc{
 
 	action tick(list<human> pop, list<mini_ville> cities){
 		do reset_tick_counters;
+		// Push decay parameters into mini-villes (for reproducible testing via GUI parameters)
+		ask cities {
+			annual_decay_rate <- decay_rate_annual_param;
+			decay_period_cycles <- decay_period_cycles_param;
+			debug_decay_log <- debug_decay_log_param;
+		}
 		ask producer { do reset_tick_counters; }
 
 		// Reset per-tick diagnostics
@@ -264,7 +283,8 @@ species urbanism parent: bloc{
 				// Always register the order first (city enters waiting_resources).
 				// IMPORTANT: do NOT call producer.produce() before the order exists.
 				// Resource reservation/consumption happens only when the city transitions to "building".
-				ask target_city { do set_construction_order(wood_plan, modular_plan, planned_surface, demand, build_duration_months_default); }
+				int planned_duration <- compute_build_duration(wood_plan, modular_plan);
+				ask target_city { do set_construction_order(wood_plan, modular_plan, planned_surface, demand, planned_duration); }
 				tick_orders_created["wood"] <- tick_orders_created["wood"] + wood_plan;
 				tick_orders_created["modular"] <- tick_orders_created["modular"] + modular_plan;
 				tick_orders_created_scaled["wood"] <- tick_orders_created_scaled["wood"] + float(wood_plan);
@@ -344,7 +364,15 @@ species urbanism parent: bloc{
 		return (sum(housing_types collect capacity_per_unit[each]) / length(housing_types));
 	}
 
-	map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
+	
+	int compute_build_duration(int wood_units, int modular_units){
+		int total_units <- wood_units + modular_units;
+		if(total_units <= 0){ return build_duration_months_default; }
+		float weighted <- (float(build_duration_months_wood) * wood_units + float(build_duration_months_modular) * modular_units) / float(total_units);
+		return max(1, int(ceil(weighted)));
+	}
+
+map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
 		// IMPORTANT: do NOT multiply again by pop_per_ind — these are already REAL units.
 		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 
@@ -355,11 +383,19 @@ species urbanism parent: bloc{
 
 		demand["m² land"] <- planned_surface;
 
-		return demand;
+		
+		if (debug_scarcity_enabled) {
+			// Inflate *resource* demand to force feasibility failures without desynchronizing land accounting
+			demand["kg wood"] <- demand["kg wood"] * debug_scarcity_multiplier;
+			demand["kg_cotton"] <- demand["kg_cotton"] * debug_scarcity_multiplier;
+			demand["kWh energy"] <- demand["kWh energy"] * debug_scarcity_multiplier;
+		}
+
+return demand;
 	}
 
 	bool surface_room(int planned_units){
-		float planned_surface <- planned_units * (surface_per_unit["wood"] + surface_per_unit["modular"]) / 2.0;
+		float planned_surface <- planned_units * (surface_per_unit["wood"] * 0.6 + surface_per_unit["modular"] * 0.4);
 		return (surface_used + planned_surface) <= constructible_surface_total;
 	}
 
@@ -657,6 +693,11 @@ species urban_producer parent: production_agent{
 experiment run_urbanism type: gui {
 	parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 	parameter "Frozen alpha_mv (debug)" var: alpha_mv_frozen;
+	parameter "Scarcity enabled (debug)" var: debug_scarcity_enabled;
+	parameter "Scarcity multiplier (debug)" var: debug_scarcity_multiplier;
+	parameter "Decay rate (annual, debug)" var: decay_rate_annual_param;
+	parameter "Decay period (cycles, debug)" var: decay_period_cycles_param;
+	parameter "Log decay events (debug)" var: debug_decay_log_param;
 	output {
 		display Urbanism_information {
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
@@ -681,14 +722,14 @@ experiment run_urbanism type: gui {
 		}
 
 		display Pipeline_debug {
-			chart "Mini-ville states" type: series size: {1.0,0.5} position: {0, 0} {
+			chart "Mini-ville states" type: series size: {0.5,0.5} position: {0, 0} {
 				data "idle" value: mini_ville count (each.construction_state = "idle");
 				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
 				data "building" value: mini_ville count (each.construction_state = "building");
 
 			}
 
-			chart "Feasibility debug" type: series size: {1.0,0.5} position: {0, 0.5} {
+			chart "Feasibility debug" type: series size: {0.5,0.5} position: {0, 0.5} {
 				data "can_checks" value: tick_can_checks;
 				data "can_fails" value: tick_can_fails;
 				data "commit_fails" value: tick_commit_fails;
@@ -706,6 +747,8 @@ experiment run_urbanism type: gui {
 		monitor "tick_commit_fails" value: tick_commit_fails;
 		monitor "tick_builds_started" value: builds_started_count_tick;
 		monitor "tick_units_completed" value: completed_units_tick;
+ 		monitor "tick_units_demolished" value: sum(mini_ville collect each.tick_units_demolished);
+		monitor "tick_capacity_demolished" value: sum(mini_ville collect each.tick_capacity_demolished);
 
 		display MiniVille_state_map {
 			// Visualize construction pipeline spatially (colors: green=idle, orange=waiting, red=building)
@@ -721,6 +764,14 @@ experiment run_urbanism type: gui {
 				data "used_buildable_area" value: sum(mini_ville collect each.used_buildable_area) color: #green;
 				data "remaining_buildable_area" value: sum(mini_ville collect each.remaining_buildable_area) color: #olive;
 			}
+		
+			chart "Housing decay" type: series size: {0.5,0.5} position: {0, 0.5} {
+				data "units demolished (scaled)" value: float(sum(mini_ville collect each.tick_units_demolished)) * alpha_mv color: #red;
+				data "capacity demolished (scaled)" value: sum(mini_ville collect each.tick_capacity_demolished) * alpha_mv color: #red;
+				data "units completed (scaled)" value: float(completed_units_tick) * alpha_mv color: #green;
+			}
+
 		}
+
 	}
 }

@@ -18,6 +18,9 @@ global{
 	float green_ratio <- 0.4;
 	float infrastructure_ratio <- 0.2;
 	float area_per_unit_default <- 70.0; // m² per housing unit (avg footprint)
+	float modular_surface_factor <- 1.15; // modular units use more surface than wood (multiplier)
+	map<string, float> surface_per_unit <- ["wood"::area_per_unit_default, "modular"::(area_per_unit_default * modular_surface_factor)];
+
 	float initial_fill_ratio <- 0.2; // share of buildable area already used at init
 
 	// Housing capacity per unit (shared baseline)
@@ -38,7 +41,7 @@ species mini_ville {
 	// Land + housing stocks
 	float buildable_area <- total_area_per_ville * buildable_ratio;
 	float used_buildable_area <- 0.0;
-	float area_per_unit <- area_per_unit_default;
+	float area_per_unit <- (surface_per_unit["wood"] * 0.6 + surface_per_unit["modular"] * 0.4);
 	int wood_housing_units <- 0;
 	int modular_housing_units <- 0;
 	float housing_capacity <- 0.0;
@@ -62,6 +65,14 @@ species mini_ville {
 	list<float> queued_surface <- [];
 	list<map<string,float>> queued_demand <- [];
 	list<int> queued_duration_months <- [];
+
+	// --- Housing lifecycle (decay) ---
+	// Minimal decay v0: periodically removes a small fraction of housing units to avoid permanent saturation.
+	float annual_decay_rate <- 0.002; // e.g., 0.2% of units per year (tune in experiment if needed)
+	int decay_period_cycles <- 12;    // assuming 1 cycle = 1 month -> 12 cycles = 1 year
+	int tick_units_demolished <- 0;   // per-cycle diagnostics (reset each cycle)
+	float tick_capacity_demolished <- 0.0; // per-cycle diagnostics (reset each cycle)
+	bool debug_decay_log <- false;
 init{
 		// initialize with partial usage of buildable area
 		used_buildable_area <- buildable_area * initial_fill_ratio;
@@ -122,16 +133,32 @@ pending_wood_units <- max(0, wood_units);
 			return;
 		}
 
-		// Clamp to remaining buildable area
-		float area_per_unit_here <- area_per_unit;
-		int max_fit <- int(floor(remaining_buildable_area / area_per_unit_here));
-		int feasible <- min(total_units, max_fit);
+		// Clamp to remaining buildable area (type-aware via pending_surface)
+		float requested_surface <- pending_surface;
+		if(requested_surface <= 0.0){
+			// fallback: approximate with average footprint
+			requested_surface <- total_units * area_per_unit;
+		}
+		float max_surface <- remaining_buildable_area;
 
-		// keep ratio if clamped
-		int wood_feasible <- int(floor(feasible * 0.6));
-		int modular_feasible <- feasible - wood_feasible;
+		int wood_feasible <- pending_wood_units;
+		int modular_feasible <- pending_modular_units;
+		float area_used_now <- requested_surface;
 
-		float area_used_now <- feasible * area_per_unit_here;
+		if(requested_surface > max_surface){
+			float factor_raw <- max(0.0, min(1.0, max_surface / requested_surface));
+			wood_feasible <- int(floor(pending_wood_units * factor_raw));
+			modular_feasible <- int(floor(pending_modular_units * factor_raw));
+
+			// ensure we don't end up with 0 due to flooring if some surface is still available
+			if(wood_feasible + modular_feasible = 0 and max_surface > 0.0){
+				if(pending_wood_units > 0){ wood_feasible <- 1; }
+				else if(pending_modular_units > 0){ modular_feasible <- 1; }
+			}
+
+			float factor_units <- float(wood_feasible + modular_feasible) / float(total_units);
+			area_used_now <- requested_surface * factor_units;
+		}
 
 		wood_housing_units <- wood_housing_units + wood_feasible;
 		modular_housing_units <- modular_housing_units + modular_feasible;
@@ -188,4 +215,40 @@ pending_wood_units <- max(0, wood_units);
 		if(construction_state = "building") { lab <- "building(" + string(build_months_remaining) + ")"; }
 		draw lab at: location + {0.0, 0.0} color: rgb("black");
 	}
+
+
+	// Reset per-cycle decay diagnostics and apply decay on a periodic schedule.
+	reflex decay_and_reset {
+		tick_units_demolished <- 0;
+		tick_capacity_demolished <- 0.0;
+		if (cycle > 0 and (cycle mod decay_period_cycles = 0)) {
+			int total_units <- wood_housing_units + modular_housing_units;
+			int remove_total <- int(round(total_units * annual_decay_rate));
+			remove_total <- min(remove_total, total_units);
+			if (remove_total > 0) {
+				float wood_ratio <- 0.5;
+				if (total_units > 0) { wood_ratio <- wood_housing_units / float(total_units); }
+				int remove_wood <- int(round(remove_total * wood_ratio));
+				remove_wood <- min(remove_wood, wood_housing_units);
+				int remove_modular <- remove_total - remove_wood;
+				remove_modular <- min(remove_modular, modular_housing_units);
+
+				wood_housing_units <- wood_housing_units - remove_wood;
+				modular_housing_units <- modular_housing_units - remove_modular;
+
+				tick_units_demolished <- remove_wood + remove_modular;
+				tick_capacity_demolished <- (remove_wood * capacity_per_unit["wood"]) + (remove_modular * capacity_per_unit["modular"]);
+
+				// Recompute capacity after decay
+				housing_capacity <- (wood_housing_units * capacity_per_unit["wood"])
+					+ (modular_housing_units * capacity_per_unit["modular"]);
+
+				if (debug_decay_log) {
+					write "DECAY mini_ville " + string(index) + " removed=" + string(tick_units_demolished)
+						+ " cap_removed=" + string(tick_capacity_demolished);
+				}
+			}
+		}
+	}
+
 }
