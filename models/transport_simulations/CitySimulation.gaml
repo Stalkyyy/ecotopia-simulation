@@ -113,20 +113,20 @@ global {
 	reflex stop_simulation when: cycle >= simulation_duration {
 	    float pop_size_safe <- (population_size = 0) ? 1.0 : float(population_size);
 	
-	    float peak_taxis_per_1k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 1000.0;
-	    float peak_bikes_per_1k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 1000.0;
-	    float peak_minibus_fleet_per_1k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 1000.0;
-	    float peak_trains_fleet_per_1k <- (max_vehicles_needed["train"] / pop_size_safe) * 1000.0;
+	    float peak_taxis_per_10k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 10000.0;
+	    float peak_bikes_per_10k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 10000.0;
+	    float peak_minibus_fleet_per_10k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 10000.0;
+	    float peak_trains_fleet_per_10k <- (max_vehicles_needed["train"] / pop_size_safe) * 10000.0;
 	    
 	
 	    // header
 	    save ["parameter", "value"] to: "city_profile.csv" rewrite: true;
 	    
 	    // append data
-	    save ["peak_taxis_per_1k", peak_taxis_per_1k_citizens] to: "city_profile.csv" rewrite: false;
-	    save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
-	    save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
-	    save ["peak_trains_fleet_per_1k", peak_trains_fleet_per_1k] to: "city_profile.csv" rewrite: false;
+	    save ["peak_taxis_per_10k", peak_taxis_per_10k_citizens] to: "city_profile.csv" rewrite: false;
+	    save ["peak_bikes_per_10k", peak_bikes_per_10k_citizens] to: "city_profile.csv" rewrite: false;
+	    save ["peak_minibus_fleet_per_10k", peak_minibus_fleet_per_10k] to: "city_profile.csv" rewrite: false;
+	    save ["peak_trains_fleet_per_10k", peak_trains_fleet_per_10k] to: "city_profile.csv" rewrite: false;
 	    
 	    loop v over: vehicle_types {
 	        save ["total_km_" + v, total_km_usage[v]] to: "city_profile.csv" rewrite: false;
@@ -426,7 +426,7 @@ species citizen {
 		    return usage;
 		}
 		// sinon : random entre taxi et vélo+marche
-		bool prend_taxi <- (rnd(1.0) <= 0.05);	// prend le taxi dans 5% des cas (je pense que les ecotopiens prendrait le taxi très rarement pour une distance si basse (échelle 3))
+		bool prend_taxi <- (rnd(1.0) <= 0.03);	// prend le taxi dans 3% des cas (je pense que les ecotopiens prendrait le taxi très rarement pour une distance si basse (échelle 3))
 		if prend_taxi {
 			usage["taxi"] <- usage["taxi"] + distance;
 	    	return usage;
@@ -440,7 +440,7 @@ species citizen {
     action add_travel_to_total (map<string, float> usage){
     	// add to each vehicle's total usage this tick
     	loop vehicle over: vehicle_types{
-    		km_usage[vehicle] <- km_usage[vehicle] + usage[vehicle];
+    		km_usage[vehicle] <- km_usage[vehicle] + (usage[vehicle] / #km); // div nb km
     	}
     	// update the number of vehicles needed (mini_buses are handled by the bus class directly)
     	if usage["bicycle"] > 0 {
@@ -651,7 +651,7 @@ species bus_system {
 	    }
 		
 	    vehicles_needed["mini_bus"] <- ceil(max_arc_flow / mini_bus_capacity) * 2;	// times 2 because we need buses going both ways
-	    km_usage["mini_bus"] <- vehicles_needed["mini_bus"] * (nb_bus_stops-1) * bus_arc_distance;	// distance totale = distance pour un tour complet multiplié par le nombre de bus utilisés ce tick
+	    km_usage["mini_bus"] <- (vehicles_needed["mini_bus"] * (nb_bus_stops-1) * bus_arc_distance) / #km;	// distance totale = distance pour un tour complet multiplié par le nombre de bus utilisés ce tick
 	}
 	
 	aspect base {
