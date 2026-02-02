@@ -19,6 +19,10 @@ import "../API/API.gaml"
  * No explicit building agents in v1: housing is aggregated inside mini-villes.
  */
 global{
+	// Demography scaling (must match Demography.gaml pop_per_ind)
+	float nb_humans_per_agent <- 19500.0;
+	//int pop_per_ind <- 6700;
+	
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
 	map<string, int> init_units <- ["wood"::0, "modular"::0]; // will be synced from mini-villes
@@ -62,9 +66,6 @@ global{
 	float pending_surface_total <- 0.0;   // sum of pending_surface in non-idle cities (m², simulated)
 	float pending_capacity_total <- 0.0;  // sum of pending capacity in non-idle cities (persons, simulated)
 
-	// Demography scaling (must match Demography.gaml pop_per_ind)
-	int pop_per_ind <- 6700;
-
 	// CDC scaling for charts: upscale capacity/land if simulated mini-villes represent constellations
 	int target_pop_per_miniville_real <- 10000;
 	int nb_minivilles_sim <- 1;
@@ -79,7 +80,7 @@ global{
 
 	/* State (for charts/logging) */
 	int population_count <- 0;           // nb of human agents (sample)
-	float population_real <- 0.0;        // scaled population in real persons (nb_humans * pop_per_ind)
+	float population_real <- 0.0;        // scaled population in real persons (nb_humans * nb_humans_per_agent)
 	map<string, int> units <- copy(init_units);
 	map<string, float> tick_resources_used <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 	map<string, int> tick_constructions <- ["wood"::0, "modular"::0];
@@ -164,7 +165,7 @@ species urbanism parent: bloc{
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
 		population_count <- nb_humans;
-		population_real <- nb_humans * pop_per_ind;
+		population_real <- nb_humans * nb_humans_per_agent;
 
 		// Completed units this tick = delta in built stock (construction commits happen inside mini-villes)
 		int current_wood_units <- units["wood"];
@@ -322,7 +323,7 @@ species urbanism parent: bloc{
 	}
 
 	map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
-		// IMPORTANT: do NOT multiply again by pop_per_ind — these are already REAL units.
+		// IMPORTANT: do NOT multiply again by nb_humans_per_agent — these are already REAL units.
 		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 
 		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units;

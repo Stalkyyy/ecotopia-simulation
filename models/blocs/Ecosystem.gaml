@@ -15,6 +15,8 @@ import "../API/API.gaml"
  */
 
 global {
+	
+	float nb_humans_per_agent <- 19500.0;
     
     /*
      * Setup
