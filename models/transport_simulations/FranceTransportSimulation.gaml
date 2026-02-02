@@ -7,15 +7,15 @@ model FranceTransportSimulation
 global {
 	string shp_path <- "../../includes/shapefiles/";
 	file shp_bounds <- file(shp_path + "boundaries_france.shp");
-	//file shp_forests <- file(shp_path + "forests_france_light.shp");
-	//file shp_rivers_lakes <- file(shp_path + "rivers_france_light.shp");
+	file shp_forests <- file(shp_path + "forests_france_light.shp");
+	file shp_rivers_lakes <- file(shp_path + "rivers_france_light.shp");
 	file shp_mountains <- file(shp_path + "mountains_france_1300m.shp");
 	
 	geometry shape <- envelope(shp_bounds); // has to be named "shape"
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 1000;
+	int population_size <- 10000;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 65M, init from CSV regions
@@ -26,12 +26,33 @@ global {
 	map<string, float> km_usage <- vehicle_types as_map (each::0.0);
 	map<string, float> vehicles_needed <- vehicle_types as_map (each::0.0);
 	
+	float total_km_accumulated <- 0.0;
+    float peak_km_day <- 0.0;
+    int max_trains_needed <- 0;
+	
 	map<string, point> region_coords <- [];
     map<string, int> region_populations <- [];
     
     graph transport_network; // To do calculations
     
     map<string, float> city_mobility_profile;
+    
+    // 0.06+0.02+0.03+0.10+0.04+0.04+0.15+0.30+0.02+0.07+0.02+0.15
+    // Reflects vacation, but trains don't move that much
+    //list<float> monthly_ratios <- [0.06, 0.02, 0.03, 0.10, 0.04, 0.04, 0.15, 0.30, 0.02, 0.07, 0.02, 0.15];
+    // flatter
+    list<float> monthly_ratios <- [0.07, 0.05, 0.05, 0.09, 0.06, 0.06, 0.12, 0.20, 0.05, 0.08, 0.05, 0.12];
+    float max_ratio <- max(monthly_ratios);
+
+    float get_probability_for_day(int day) {
+        float year_progress <- day / 365 * 11;
+        int index_a <- int(floor(year_progress));
+        int index_b <- (index_a + 1) mod 12;
+        float fraction <- year_progress - index_a;
+        
+        // Linear interpolation: y = y0 + (y1 - y0) * fraction
+        return monthly_ratios[index_a] + (monthly_ratios[index_b] - monthly_ratios[index_a]) * fraction;
+    }
 
 	// ----------
 	//    INIT
@@ -39,6 +60,8 @@ global {
     init {
     	create fronteers from: shp_bounds;
     	create mountain from: shp_mountains;
+    	create forest from: shp_forests;
+    	create water_source from: shp_rivers_lakes;
     	
     	
     	// Nodes
@@ -73,6 +96,7 @@ global {
 	        }
 	    }
 	    transport_network <- as_edge_graph(transport_link);
+	    ask transport_link {write "Link from " + start_node.name + " to " + end_node.name + " length: " + (shape.perimeter / 1000) + " km";}
 	    
 	    
 	    // Loading scale 3 data
@@ -102,9 +126,18 @@ global {
     			daily_passengers <- 0.0;
     		}
     	}
+    	total_km_accumulated <- total_km_accumulated + km_usage["train"];
+        if (km_usage["train"] > peak_km_day) { peak_km_day <- km_usage["train"]; }
+        if (vehicles_needed["train"] > max_trains_needed) { max_trains_needed <- vehicles_needed["train"]; }
     }
     
     reflex stop_simulation when: cycle >= simulation_duration {
+    	string csv_str <- "france_transport_results.csv";
+        save ["Metric", "Value"] to: csv_str rewrite: true;
+        save ["total_km_year", total_km_accumulated] to: csv_str rewrite: false;
+        save ["peak_km_single_day", peak_km_day] to: csv_str rewrite: false;
+        save ["max_trains_required", max_trains_needed] to: csv_str rewrite: false;
+        write "Saved to " + csv_str; 
     	do pause;
     }
 }
@@ -132,6 +165,8 @@ species transport_link {
 
 species fronteers { aspect base { draw shape color: #transparent border: #black width: 2.0; } }
 species mountain { aspect base { draw shape color: rgb(200, 200, 200, 150); } }
+species forest { aspect base { draw shape color: rgb(34, 139, 34, 100) border: #transparent; } }
+species water_source { aspect base { draw shape color: #blue border: #blue; } }
 
 
 // data holder
@@ -176,27 +211,49 @@ species citizen {
 		}
 		if debug_write {write "[Work] " + num_professional_trips + "x";}
 		
-		// Vacation(misc) trips: 1 / week, on average 5.2 days long
-		int num_vacation_trips <- poisson(51);
-		loop times: num_vacation_trips {
+		// Misc trips: 1 / month (instead of /week of CDC), on average 5.2 days long
+		int num_misc_trips <- poisson(12);
+        int trips_created <- 0;
+        loop while: trips_created < num_misc_trips {
+            int candidate_day <- rnd(0, 364);
+            float p <- world.get_probability_for_day(candidate_day);
+            
+            // accept day if random float < probability, divided by max_ratio to normalize
+            if (rnd(0.0, max_ratio) <= p) {
+                if (travel_plan[candidate_day] = nil) {
+                    create trip {
+                        type <- "misc";
+                        destination <- one_of(region_node - myself.home_region);
+                        duration <- poisson(4.2) + 1;
+                        myself.travel_plan[candidate_day] <- self;                        
+                    }
+                    trips_created <- trips_created + 1;
+                }
+            }
+        }
+		if debug_write {write "[Misc] " + num_misc_trips + "x\nDays: " + travel_plan;}
+		
+		// Leisure trips: 0.5 / week (half of them are on scale 3)
+		int num_leisure_trips <- poisson(26);
+		loop times: num_leisure_trips {
 			loop i from: 1 to: 500 {
 				int leisure_day <- rnd(0, 365);
 				if (travel_plan[leisure_day] = nil) {
 					create trip {
 						type <- "leisure";
-						destination <- one_of(region_node - myself.home_region);
-                    	duration <- poisson(4.2) + 1;
-						myself.travel_plan[leisure_day] <- self;						
+					    //destination <- one_of(region_node - myself.home_region); // We suppose it's on scale 1.
+					    destination <- (region_node - myself.home_region) closest_to(myself) ;
+						duration <- 1;
+						myself.travel_plan[leisure_day] <- self;
 					}
 					break;
 				}
 			}
 		}
-		if debug_write {write "[Vacation] " + num_vacation_trips + "x\nDays: " + travel_plan;}
 	}
 	
 	reflex manage_travel {
-        // CASE 1: Start a new trip
+        // Starting new trip
         if (active_trip = nil and travel_plan[cycle] != nil) {
             active_trip <- travel_plan[cycle];
             remaining_days <- active_trip.duration;
@@ -210,16 +267,14 @@ species citizen {
             if debug_write { write "Starting " + activity + " trip to " + active_trip.destination.name + " for " + remaining_days + " days"; }
         } 
         
-        // CASE 2: Currently on a trip
+        // Already on a trip
         if (active_trip != nil) {
             remaining_days <- remaining_days - 1;
-            //if debug_write {write "Day " + cycle + ", at " + location;}
             
-            // CASE 3: Trip ends today
+            // Trip ends today
             if (remaining_days <= 0) {
                 if debug_write { write "Trip ended. Returning home to " + home_region.name; }
                 
-                // Register infrastructure usage on return
                 do execute_trip(active_trip.destination, home_region);
                 
                 location <- home_region.location;
@@ -252,6 +307,9 @@ experiment france_simulation type: gui {
 		display map type: java2D {
 			species fronteers aspect: base;
 			species mountain aspect: base;
+			species forest aspect: base;
+			species water_source aspect: base;
+			
 			species region_node aspect: base;
 			species transport_link aspect: base;
 			species citizen aspect: base;
@@ -260,11 +318,11 @@ experiment france_simulation type: gui {
 				draw "Day: " + cycle at: {world.shape.width * 0.02, world.shape.height * 0.05} color: #black font: font("Arial", 18, #bold);
 			}
 		}
-		display charts refresh: every(1#cycles) {
+		display charts refresh: every(1#cycles) type: java2D {
 			chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} y_log_scale: true {
 				data "At home" value: citizen count (each.activity = "local") color: #green;
 				data "Work Trip" value: citizen count (each.activity = "work") color: #red;
-				data "Leisure Trip" value: citizen count (each.activity = "leisure") color: #blue;
+				data "Misc Trip" value: citizen count (each.activity = "misc") color: #blue;
 			}
 			chart "Cumulative km usage / day" type: series size: {0.5, 0.5} position: {0, 0.5} y_log_scale: false {
 				data "Train" value: km_usage["train"] color: #blue;
