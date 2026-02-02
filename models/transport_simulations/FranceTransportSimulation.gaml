@@ -15,7 +15,7 @@ global {
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 100;
+	int population_size <- 1000;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 65M, init from CSV regions
@@ -295,29 +295,32 @@ species citizen {
 	    }if debug_write {write "[Scale1 Work] " + num_professional_trips + "x";}
 	    
 	    // Work: scale 2: 2x per week
-	    loop week from: 0 to: 51 {
-            int commutes_placed <- 0;
-            int attempts <- 0;
-            loop while: (commutes_placed < 2) and (attempts < 20) {
-            	attempts <- attempts + 1; 
-                int day <- (week * 7) + rnd(0, 6);
-                if (day < 365) {
-                	bool is_vacation <- (day >= 212 and day <= 243) or (day >= 355);
-                	if (!is_vacation and travel_plan[day] = nil) {
-	                    create trip {
-	                        type <- "work";
-	                        // 1-10km of home node ~ constellations
-	                        geometry donut <- circle(10#km) - circle(1#km);
-	                        nature_target <- any_location_in(donut at_location myself.home_region.location);
-	                        destination <- myself.home_region; 
-	                        duration <- 1;
-	                        myself.travel_plan[day] <- self;
-	                    }
-	                    commutes_placed <- commutes_placed + 1;
-	                }
-                }
-            }
-        }
+		int total_commutes_target <- 104; // 2 days * 52 weeks
+		int commutes_placed <- 0;
+		int safety_timeout <- 0;
+		
+		loop while: (commutes_placed < total_commutes_target) {
+		    int candidate_day <- rnd(0, 364);
+		    float p_work <- world.get_work_probability_for_day(candidate_day);
+		    
+		    if (rnd(0.0, max_ratio) <= p_work) {
+		        if (travel_plan[candidate_day] = nil) {
+		            create trip {
+		                type <- "work";
+		                geometry donut <- circle(10#km) - circle(1#km); // constellations
+		                nature_target <- any_location_in(donut at_location myself.home_region.location);
+		                destination <- myself.home_region; 
+		                duration <- 1;
+		                myself.travel_plan[candidate_day] <- self;
+		            }
+		            commutes_placed <- commutes_placed + 1;
+		        }
+		    }
+		    
+		    // Safety to prevent infinite loops if the schedule is too crowded
+		    safety_timeout <- safety_timeout + 1;
+		    if (safety_timeout > 2000) { break; }
+		}
 		
 		// Misc trips: 1 / month (instead of /week of CDC), on average 5.2 days long
 		int num_misc_trips <- poisson(12);
@@ -350,7 +353,7 @@ species citizen {
                     type <- "leisure";
                     nature_target <- myself.get_nature_location(myself.home_region, true);
                     destination <- region_node closest_to nature_target;
-                    duration <- 2;
+                    duration <- 1;
                     myself.travel_plan[leisure_day] <- self;
                 }
             }
