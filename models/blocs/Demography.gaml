@@ -493,7 +493,7 @@ species residents parent:bloc{
 	action mortality_by_water{
 		// MIN/MAX tuning parameters for sensitivity
 		float min_coeff <- 0.95;
-		float max_coeff <- 1.5;
+		float max_coeff <- 2.0;
 
 		// First step protection
 		if (cycle <= 1) {
@@ -615,16 +615,19 @@ species residents parent:bloc{
 		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
 		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
 		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
-		float total_bonus <- food_bonus + water_bonus + housing_bonus;
+		float transport_completion <- producer.get_transport_completion();
+		write "[Demography] Transport Completion: " + transport_completion;
+		float transport_bonus <- (transport_completion >= 0.8) ? 0.5 : (transport_completion - 0.5); // Bonus if good, penalty if bad
+
+		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);
 		
 		// Update global happiness index (sluggishly)
 		float target_happiness <- 0.5;
 		if (total_stress > 0) {
 			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
 		} else if (total_bonus > 0) {
-			// If all 3 bonuses met, target is 0.5 + 0.45 = 0.95
-			// If 2 bonuses met, target is 0.5 + 0.30 = 0.80
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15));
+			// If all bonuses met, target rises
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.12)); // Slightly reduced multiplier to account for transport
 		}
 		
 		// Move towards target (inertia)
@@ -980,9 +983,9 @@ chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: 
 				data "total_deaths" value: deaths color: #black;
 			}
 chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0.66} {
-				// (1 + growth_rate) where 1.0 is stable. >1 growing, <1 shrinking.
-				data "growth_factor" value: (total_pop > 0) ? (1.0 + ((birth_rate - death_rate) / total_pop)) : 1.0 color: #blue;
-				data "replacement_level" value: 1.0 color: #black;
+				// Show net growth rate percentage (0% = stable)
+				data "Growth Rate %" value: (total_pop > 0) ? ((birth_rate - death_rate) / total_pop) * 100.0 : 0.0 color: #blue;
+				data "Stable (0%)" value: 0.0 color: #black;
             }
 
             chart "Calorie mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0} {

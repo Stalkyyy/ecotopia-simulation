@@ -40,6 +40,7 @@ species bloc{
  * See the example blocs supplied alongside the API for more details.
  */
 species production_agent{
+	float transport_completion <- 1.0;
 	
 	/* Produce the given resources in the requested quantities. Return true in case of success. */
 	action produce(string bloc_name, map<string, float> demand) virtual:true type:map<string, unknown>;
@@ -75,6 +76,16 @@ species production_agent{
 		ask ecosystem {
 			do receive_water_reinjection(water_l);
 		}
+	}
+	
+	/* Send the transport completition to the demography Bloc */
+	action send_transport_completion(float completion) {
+		transport_completion <- completion;
+	}
+	
+	/* Get the transport completition from the transport Bloc */
+	float get_transport_completion {
+		return transport_completion;
 	}
 }
 
@@ -191,7 +202,7 @@ species coordinator{
 
 		list<human> pop <- get_all_instances(human);	
 		list<mini_ville> cities <- (mini_ville as list<mini_ville>);
-		//write "coordinator: mini_villes=" + length(cities);
+		write "coordinator: mini_villes=" + length(cities);
 
 		loop bloc_name over: scheduling{ // move to next tick for all blocs, following the defined scheduling
 			if bloc_name in registered_blocs.keys{
