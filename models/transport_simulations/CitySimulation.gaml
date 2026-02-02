@@ -281,7 +281,7 @@ species citizen {
         
         // Leisure: 1~5h (2h avg)
         float leisure_roll <- rnd(1.0);
-        if (leisure_roll < 0.25) { leisure_type <- "external"; }
+        if (leisure_roll < 0.15) { leisure_type <- "external"; }
         else if (leisure_roll < 0.4) { leisure_type <- "outskirts"; }
         else if (leisure_roll < 0.8) {leisure_type <- "city"; }
         else { leisure_type <- "home"; }
