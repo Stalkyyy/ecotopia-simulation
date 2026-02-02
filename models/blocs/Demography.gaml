@@ -15,7 +15,7 @@ global{
 	float total_pop <- 68250000.0;
 	float nb_humans_per_agent <- 19500.0;
 	int nb_init_individuals <- int(total_pop / nb_humans_per_agent);
-
+	
 	int nb_ticks_per_year <- 12; // here, one tick is one month
 	string female_gender <- "F";
 	string male_gender <- "M";
@@ -32,7 +32,9 @@ global{
 	/* Parameters */ 
 	float coeff_birth <- 1.0; // a parameter that can be used to increase or decrease the birth probability
 	float coeff_death <- 1.0; // a parameter that can be used to increase or decrease the death probability
-	
+	// int nb_init_individuals <- 10000; // pop size
+	// int pop_per_ind <- 6700;
+	// int total_pop <- nb_init_individuals * pop_per_ind;
 	
 	/* Counters & Stats */
 	int nb_inds -> {length(individual)};
@@ -145,6 +147,8 @@ global{
 species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- true; // true to activate the demography (births, deaths), else false.
+	
+	
 	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
@@ -281,9 +285,9 @@ species residents parent:bloc{
 		if (cycle mod 12 = 0) { // once a year
 			int total_mapped_pop <- 0; 
 			ask cities {
+				total_mapped_pop <- total_mapped_pop + int(population_count);
 				// Debug log every 100 mini_villes
 				if (index mod 100 = 0) {
-					total_mapped_pop <- total_mapped_pop + int(population_count);
 					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
 				}
 			}
@@ -495,7 +499,7 @@ species residents parent:bloc{
 	action mortality_by_water{
 		// MIN/MAX tuning parameters for sensitivity
 		float min_coeff <- 0.95;
-		float max_coeff <- 2.0;
+		float max_coeff <- 1.5;
 
 		// First step protection
 		if (cycle <= 1) {
@@ -617,19 +621,16 @@ species residents parent:bloc{
 		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
 		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
 		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
-		float transport_completion <- producer.get_transport_completion();
-		write "[Demography] Transport Completion: " + transport_completion;
-		float transport_bonus <- (transport_completion >= 0.8) ? 0.5 : (transport_completion - 0.5); // Bonus if good, penalty if bad
-
-		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);
+		float total_bonus <- food_bonus + water_bonus + housing_bonus;
 		
 		// Update global happiness index (sluggishly)
 		float target_happiness <- 0.5;
 		if (total_stress > 0) {
 			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
 		} else if (total_bonus > 0) {
-			// If all bonuses met, target rises
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.12)); // Slightly reduced multiplier to account for transport
+			// If all 3 bonuses met, target is 0.5 + 0.45 = 0.95
+			// If 2 bonuses met, target is 0.5 + 0.30 = 0.80
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15));
 		}
 		
 		// Move towards target (inertia)
@@ -942,8 +943,8 @@ experiment run_demography type: gui {
 			
 			/*
 			chart "Gender evolution" type: series size: {0.5,0.5} position: {0, 0} {
-				data "number_of_man" value: nb_humans_per_agent * (individual count(not dead(each) and each.gender = male_gender)) color: #red;
-				data "number_of_woman" value: nb_humans_per_agent * (individual count(not dead(each) and each.gender = female_gender)) color: #blue;
+				data "number_of_man" value: pop_per_ind * (individual count(not dead(each) and each.gender = male_gender)) color: #red;
+				data "number_of_woman" value: pop_per_ind * (individual count(not dead(each) and each.gender = female_gender)) color: #blue;
 				data "total_population" value: total_pop color: #black;
 			}
 			chart "Age Pyramid" type: histogram background: #lightgray size: {0.5,0.5} position: {0, 0.5} {
@@ -985,9 +986,9 @@ chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: 
 				data "total_deaths" value: deaths color: #black;
 			}
 chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0.66} {
-				// Show net growth rate percentage (0% = stable)
-				data "Growth Rate %" value: (total_pop > 0) ? ((birth_rate - death_rate) / total_pop) * 100.0 : 0.0 color: #blue;
-				data "Stable (0%)" value: 0.0 color: #black;
+				// (1 + growth_rate) where 1.0 is stable. >1 growing, <1 shrinking.
+				data "growth_factor" value: (total_pop > 0) ? (1.0 + ((birth_rate - death_rate) / total_pop)) : 1.0 color: #blue;
+				data "replacement_level" value: 1.0 color: #black;
             }
 
             chart "Calorie mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0} {

@@ -666,8 +666,8 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
-    int required_trains_per_tick_for_65m_citizens <- 22120;		// value from simulation at scale 1/2
-    int train_km_per_tick_per_65m_person <- 26709061+3824561;		// value from simulation at scale 1/2
+    int required_trains_per_tick_for_65m_citizens <- 19310;		// value from simulation at scale 1/2
+    int train_km_per_tick_per_65m_person <- 10927598+14150432;		// value from simulation at scale 1/2
 
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()

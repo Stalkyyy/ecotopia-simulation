@@ -15,7 +15,7 @@ global {
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 1000;
+	int population_size <- 10000;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 68.25M, init from CSV regions
@@ -157,7 +157,7 @@ global {
 	
 	// Un train fait 10 aller-retours par jour (justifications sur rapport ou csv)
 	int num_rides_per_day <- 10;
-	int regional_multiplier <- 2; // 2x more rails in local
+	int regional_multiplier <- 4; // 4x more rails in france
     reflex calculate_railway_infrastructure_usage {
     	float daily_km_reg <- 0.0;
         float daily_km_loc <- 0.0;
@@ -380,13 +380,13 @@ species citizen {
 		if debug_write {write "[Misc] " + num_misc_trips + "x\nDays: " + travel_plan;}
 		
 		// Leisure trips: 1 per day base freq
-		// Ignore 85% (because they're scale 3) -> 1 trip every 4 days
+		// Ignore 75% (because they're scale 3) -> 1 trip every 4 days
 		loop day from: 0 to: 364 {
-		    if (flip(0.15)) {
+		    if (flip(0.25)) {
 		        if (travel_plan[day] = nil) {
 		            
-		            // 50% scale 1, 50% Local
-		            if (flip(0.5)) {
+		            // 80% scale 2, 20% Local
+		            if (flip(0.8)) {
 		                create trip {
 		                    type <- "leisure";
 		                    destination <- one_of(region_node - myself.home_region);
