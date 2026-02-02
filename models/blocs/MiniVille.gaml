@@ -26,9 +26,9 @@ global{
 }
 
 /**
-* Mini-ville (v1): fixed set, aggregate land-use budgets and housing stock.
-* No explicit building agents in this version.
-*
+ * Mini-ville (v1): fixed set, aggregate land-use budgets and housing stock.
+ * No explicit building agents in this version.
+ *
 * Construction pipeline fields are used by the Urbanism bloc:
 * - construction_state in {"idle","waiting_resources","building"}
 * - pending_* describe the current order
@@ -45,7 +45,7 @@ species mini_ville {
 	float housing_capacity <- 0.0;
 	float population_count <- 0.0; // Population currently living here
 	float remaining_buildable_area <- buildable_area;
-
+	
 	// --- Construction pipeline ---
 	string construction_state <- "idle"; // idle | waiting_resources | building
 
@@ -64,22 +64,91 @@ species mini_ville {
 	list<float> queued_surface <- [];
 	list<map<string,float>> queued_demand <- [];
 	list<int> queued_duration_months <- [];
-init{
+
+	// vvv TRANSPORT BLOC VEHICLES vvv
+	// DATA :
+	list<string> vehicles <- ["taxi", "minibus", "bicycle"];
+	map<string, map<string, float>> vehicle_data <- [
+		// initial quantity
+		// lifetime for each vehicle
+		// number of km used with this vehicle during a tick
+		"walk"::[
+			"km_per_tick_per_10k_person"::13060524	//TODO : obtained from the Scale3 simulation
+		],
+		"taxi"::[
+			"quantity"::132,	// TODO : obtained from the Scale3 simulation
+			"lifetime"::138,
+			"km_per_tick_per_10k_person"::4562008	//TODO : obtained from the Scale3 simulation
+		],
+		"minibus"::[
+			"quantity"::38,	// TODO : obtained from the Scale3 simulation
+			"lifetime"::98,
+			"km_per_tick_per_10k_person"::5261131	//TODO : obtained from the Scale3 simulation
+		],
+		"bicycle"::[
+			"quantity"::3008,	// TODO : obtained from the Scale3 simulation
+			"lifetime"::84,
+			"km_per_tick_per_10k_person"::117643345	//TODO : obtained from the Scale3 simulation
+		]
+	];
+	
+	
+	// number of vehicules in the city
+	// this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
+	map<string, int> number_of_vehicles <- []; // initialized in setup_vehicles()
+	// ages (in ticks) for each vehicles
+	map<string, list<int>> vehicles_age <- [];
+	
+	
+	// function to setup the original amounts of vehicles of the mini_ville and their age
+	action setup_vehicles {
+		loop v over:vehicles{
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
+			
+			// initializing lifespan (uniform distribution of age)
+			vehicles_age[v] <- [];
+			int number_of_ticks <- int(vehicle_data[v]["lifetime"]);
+			int number_of_vehicles_per_tick <- number_of_vehicles[v] div number_of_ticks;
+			int remainder <- number_of_vehicles[v] mod number_of_ticks;
+			list<int> first_half <- [];
+			list<int> second_half <- [];
+			loop times: remainder{
+				first_half <+ number_of_vehicles_per_tick + 1;
+			}
+			loop times: number_of_ticks - remainder{
+				second_half <+ number_of_vehicles_per_tick;
+			}
+			vehicles_age[v] <- first_half + second_half;
+		}
+	}
+	
+	// function to request transport ressources from transport bloc
+	action make_population_transport_demand {
+		// should make a request to transport Bloc to create transport ressources for its population
+		// not sure how to give access to this class to the transport bloc to make the request (without making a Circular dependency)
+		// So maybe we should move all theses from the reflex to the Transport, but that's the opposite of what I talked with the teacher last time...
+	}
+	
+	// ^^^ TRANSPORT BLOC VEHICLES ^^^
+
+	init{
 		// initialize with partial usage of buildable area
 		used_buildable_area <- buildable_area * initial_fill_ratio;
 		remaining_buildable_area <- max(0.0, buildable_area - used_buildable_area);
-
+		
 		int total_units <- int(floor(used_buildable_area / area_per_unit));
 		wood_housing_units <- int(floor(total_units * 0.6));
 		modular_housing_units <- total_units - wood_housing_units;
-
+		
 		housing_capacity <- (wood_housing_units * capacity_per_unit["wood"])
 			+ (modular_housing_units * capacity_per_unit["modular"]);
-
+		
 		// debug log
 		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+		
+		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
 	}
-
+	
 	// Register an order (does NOT consume resources).
 	action set_construction_order(int wood_units, int modular_units, float surface, map<string, float> demand, int duration_months){
 		// v1: if a build is already in progress, enqueue (FIFO)
