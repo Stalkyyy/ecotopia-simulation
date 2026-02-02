@@ -665,12 +665,8 @@ species agricultural parent:bloc{
 	                    }
 	                    
 	                    if(u = "kWh energy"){
-<<<<<<< HEAD
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        write "info : " + info;
-=======
-	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
->>>>>>> branch 'alimentation' of https://gitlab.com/ecotopia/world-a-2025.git
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
 	                        	float ratio <- float(transmitted_energy/quantity_needed);
