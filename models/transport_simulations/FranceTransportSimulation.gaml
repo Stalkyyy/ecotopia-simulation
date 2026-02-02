@@ -15,7 +15,7 @@ global {
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 1000;
+	int population_size <- 10000;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 65M, init from CSV regions
