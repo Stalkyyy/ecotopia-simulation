@@ -140,19 +140,21 @@ species urbanism parent: bloc{
 	bool cities_logged <- false;
 
 	action setup{
-		// initialize mini-villes near existing GIS cities when available
+		// Initialize mini-villes from the GIS "city" layer.
+		// IMPORTANT: if mini_ville_count > number of GIS cities, we *replicate* city locations
+		// (cycling through the available cities). This is only for scaling/performance tests.
+		// For a true ~6500-location run, the "city" layer must contain ~6500 features.
 		list<city> cities <- (city as list<city>);
-		int n <- min(mini_ville_count, length(cities));
 
-		if(n > 0){
-			loop c over: cities {
-				if(n <= 0) { break; }
+		if(length(cities) > 0){
+			loop i from: 0 to: (mini_ville_count - 1) {
+				city c <- cities[i mod length(cities)];
 				create mini_ville number: 1 {
 					location <- c.location;
 				}
-				n <- n - 1;
 			}
 		} else {
+			// Fallback: create mini-villes without spatial anchoring.
 			create mini_ville number: mini_ville_count;
 		}
 
