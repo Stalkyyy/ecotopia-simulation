@@ -53,7 +53,7 @@ global {
     
     map<string, float> water_used_by_bloc <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
 	map<string, float> water_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
-	float received_water <- 0.0;
+	float received_water_tick <- 0.0;
     
     
     /*
@@ -281,11 +281,7 @@ species ecosystem parent:bloc {
 	    if !(bloc_name in ges_by_bloc_tick.keys) {
 	        ges_by_bloc_tick[bloc_name] <- 0.0;
 	    }
-    
-    	// Cumul global
     	ges_by_bloc[bloc_name] <- ges_by_bloc[bloc_name] + (emissions_gCO2e / 1000000.0);
-
-	    // Tick courant (pour affichage)
 	    ges_by_bloc_tick[bloc_name] <- ges_by_bloc_tick[bloc_name] + (emissions_gCO2e / 1000000.0);
 	}
 	
@@ -294,7 +290,10 @@ species ecosystem parent:bloc {
      */
     action receive_water_reinjection(float water_l) {
         water_stock_l <- min(water_stock_l + water_l, water_max_stock_l);
-        received_water <- received_water + water_l;
+        received_water_tick <- received_water_tick + water_l;
+        // to save the actual water consumption from this bloc
+        water_used_by_bloc["energy"] <- water_used_by_bloc["energy"] - water_l;
+		water_used_by_bloc_tick["energy"] <- water_used_by_bloc_tick["energy"] - water_l;
     }
     
     action collect_last_tick_data{
@@ -305,6 +304,7 @@ species ecosystem parent:bloc {
             ges_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanisme"::0.0];
             water_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanisme"::0.0, "population"::0.0];
             land_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "urbanism"::0.0];
+            received_water_tick <- 0.0;
             
             ask ecosystem_producer{
                 do reset_tick_counters;
@@ -459,7 +459,7 @@ experiment run_ecosystem type: gui {
              * ROW 1
              */
             // Water stock evolution
-            chart "Water stock (Liters)" type: series size: {0.25, 0.25} position: {0.0, 0.0} y_log_scale:true {
+            chart "Water stock (L)" type: series size: {0.25, 0.25} position: {0.0, 0.0} y_log_scale:true {
                 data "Stock" value: water_stock_l;
                 data "Max available" value: water_max_stock_l;
             }
@@ -470,15 +470,17 @@ experiment run_ecosystem type: gui {
 			    }
 			}
 			
-			chart "Cumulative water consumption by bloc (L / month)" type: series size: {0.25, 0.25} position: {0.50, 0.0} y_log_scale:true {
+			chart "Cumulative water consumption by bloc (L)" type: series size: {0.25, 0.25} position: {0.50, 0.0} y_log_scale:true {
 			    loop b over: water_used_by_bloc.keys {
 			        data b value: water_used_by_bloc[b];
 			    }
 			}
 			
-			// Cumulative reinjected water
-            chart "Cumulative water reinjected (L)" type: series size: {0.25,0.25} position: {0.75, 0.0} {
-			    data "Reinjected water" value: received_water;
+			// Comparison reinjected water VS withdrawn water VS consumed wter by bloc Energy
+            chart "Energy water balance per tick (L / month)" type: series size: {0.25,0.25} position: {0.75, 0.0} y_log_scale:true {
+			    data "Reinjected water" value: received_water_tick;
+			    data "Consumed water" value: water_used_by_bloc_tick["energy"];
+			    data "Withdrawn water" value: water_used_by_bloc_tick["energy"] + received_water_tick;
 			}
             
             
@@ -502,6 +504,11 @@ experiment run_ecosystem type: gui {
 			        data b value: land_used_by_bloc[b];
 			    }
 			}
+			
+			chart "Energy water balance" type: pie size: {0.25,0.25} position: {0.75, 0.25} {
+			    data "Consumed water" value: water_used_by_bloc_tick["energy"];
+			    data "Reinjected water" value: received_water_tick;
+			}
             
             
             /*
@@ -524,6 +531,12 @@ experiment run_ecosystem type: gui {
 			    }
 			}
 			
+			chart "Water consumption by bloc (pie)" type: pie size: {0.25,0.25} position: {0.75, 0.50} {
+			    loop b over: water_used_by_bloc.keys {
+			        data b value: water_used_by_bloc[b];
+			    }
+			}
+			
 			/*
              * ROW 4
              */
@@ -543,6 +556,12 @@ experiment run_ecosystem type: gui {
 			// Proportion hunted animals
 			chart "Wildlife hunting pressure" type: series size: {0.25, 0.25} position: {0.50, 0.75} {
 			    data "Animaux chassés" value: wildlife_hunted_last_tick;
+			}
+			
+			chart "GES emission by bloc (pie)" type: pie size: {0.25,0.25} position: {0.75, 0.75} {
+			    loop b over: ges_by_bloc.keys {
+			        data b value: ges_by_bloc[b];
+			    }
 			}
         }
     }
