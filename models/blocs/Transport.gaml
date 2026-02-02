@@ -45,7 +45,7 @@ global{
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
-			"quantity"::20283,
+			"quantity"::19310,	// from simulation at scale 1/2
 			"capacity"::258, // (people)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0,
@@ -114,6 +114,7 @@ global{
 	
 	/* Consumption data */
 	map<string, float> individual_consumption_T <- [
+		// used in Macro, in Micro we no longer use these consumptions automatically
 //		"km/person_scale_1"::1636.0,
 //		"km/person_scale_2"::1520.0
 //		"km/person_scale_3"::47.2
@@ -142,7 +143,7 @@ global{
 	}
 	
 	float kWh_per_kg_plastic <- 19.4;
-	float nb_humans_per_agent <- 19500.0;
+	int nb_humans_per_agent <- 19500;
 	// float humans_per_agent <- 6700.0;
 }
 
@@ -455,10 +456,10 @@ species transport parent:bloc{
     
 	// vvv CITY CODE vvv
     map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
-		// TODO: find the correct starting quantities for 10k people cities from 
-		"taxi"::132,		// TODO : obtained from the Scale3 simulation
-		"minibus"::38,	// TODO : obtained from the Scale3 simulation
-		"bicycle"::3008	// TODO : obtained from the Scale3 simulation
+		// number of vehicles required for 10k people cities
+		"taxi"::78,		// value obtained from the Scale3 simulation
+		"minibus"::38,	// value obtained from the Scale3 simulation
+		"bicycle"::3036	// value obtained from the Scale3 simulation
 	];
 	
     
@@ -653,17 +654,14 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
-    int required_trains_per_tick_for_65m_citizens <- 20283;		// TODO: value from simulation at scale 1
-    int train_km_per_tick_per_65m_person <- 14155602+10404121;		// TODO: value from simulation at scale 1	
-//    int required_trains_per_tick_for_65m_citizens <- 4907;		// TODO: value from simulation at scale 1
-//    int train_km_per_tick_per_65m_person <- 14367186833;		// TODO: value from simulation at scale 1
-//	172406242004 km per year found
-//	-> 14367186833 km per tick
+    int required_trains_per_tick_for_65m_citizens <- 19310;		// value from simulation at scale 1/2
+    int train_km_per_tick_per_65m_person <- 10927598+14150432;		// value from simulation at scale 1/2
+
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()
 		string t <- "train";
-		int population <- length(pop) * 6500;
-		float ratio_population_to_65m <- population / 65000000;
+		int population <- length(pop) * nb_humans_per_agent;
+		float ratio_population_to_65m <- population / 68250000;
 		// check if we need to create more trains for the current population :
 		float trains_required_this_tick <- required_trains_per_tick_for_65m_citizens * ratio_population_to_65m;
 		
