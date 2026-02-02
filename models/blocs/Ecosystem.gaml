@@ -343,27 +343,30 @@ species ecosystem parent:bloc {
             float transmitted_land <- 0.0;
             float transmitted_wood <- 0.0;
             
-            
-            
             // WATER
             if("L water" in demand.keys){
                 float water_requested_l <- demand["L water"];
-                transmitted_water <- min(water_requested_l, water_stock_l);
+                if(water_requested_l > water_stock_l){
+                    ok <- false;
+                }
                 
+                
+                transmitted_water <- min(water_requested_l, water_stock_l);
+                                
                 water_stock_l <- water_stock_l - transmitted_water;
                 tick_production["L water"] <- tick_production["L water"] + transmitted_water;
                 
                 water_used_by_bloc[bloc_name] <- water_used_by_bloc[bloc_name] + transmitted_water;
 		        water_used_by_bloc_tick[bloc_name] <- water_used_by_bloc_tick[bloc_name] + transmitted_water;
-                
-                if(water_requested_l > water_stock_l){
-                    ok <- false;
-                }
             }
             
             // LAND
             if("m² land" in demand.keys){
                 float land_requested <- demand["m² land"];
+                if(land_requested > land_stock){
+                    ok <- false;
+                }
+                
                 transmitted_land <- min(land_requested, land_stock);
                 
                 land_occupied <- land_occupied + transmitted_land;
@@ -372,24 +375,19 @@ species ecosystem parent:bloc {
                 
                 land_used_by_bloc[bloc_name] <- land_used_by_bloc[bloc_name] + transmitted_land;
 		        land_used_by_bloc_tick[bloc_name] <- land_used_by_bloc_tick[bloc_name] + transmitted_land;
-                
-                if(land_requested > land_stock){
-                    ok <- false;
-                }
             }
             
             // WOOD
             if("kg wood" in demand.keys){
                 float wood_requested <- demand["kg wood"];
+                if(wood_requested > wood_stock_kg){
+                    ok <- false;
+                }
+                
                 transmitted_wood <- min(wood_requested, wood_stock_kg);
                 
                 wood_stock_kg <- wood_stock_kg - transmitted_wood;
                 tick_production["kg wood"] <- tick_production["kg wood"] + transmitted_wood;
-                
-                
-                if(wood_requested > wood_stock_kg){
-                    ok <- false;
-                }
             }
             
             map<string, unknown> prod_info <- [
