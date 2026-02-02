@@ -613,9 +613,10 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 	
-    int required_trains_per_tick_for_65m_citizens <- 10000;		// TODO: value from simulation at scale 1
-    float train_km_per_tick_per_65m_person <- 650000000.0;		// TODO: value from simulation at scale 1
-	
+    int required_trains_per_tick_for_65m_citizens <- 4907;		// TODO: value from simulation at scale 1
+    int train_km_per_tick_per_65m_person <- 14367186833;		// TODO: value from simulation at scale 1
+//	172406242004 km per year found
+//	-> 14367186833 km per tick
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()
 		string t <- "train";
