@@ -43,11 +43,12 @@ global {
     
     // Monthly production / Seasonal production
     float monthly_water_regeneration <- 1.75e13;
+    float annual_water_regeneration <- 2.08e14;
     map<string, float> monthly_seasonal_water_regeneration <- [
-    	"winter"::0.48 * monthly_water_regeneration,
-    	"spring"::0.1 * monthly_water_regeneration, 
-    	"summer"::0.02 * monthly_water_regeneration,
-    	"autumn"::0.4 * monthly_water_regeneration
+    	"winter"::(0.48 * annual_water_regeneration) / 3,
+    	"spring"::(0.1 * annual_water_regeneration) / 3, 
+    	"summer"::(0.02 * annual_water_regeneration) / 3,
+    	"autumn"::(0.4 * annual_water_regeneration) / 3
     ];
     
     map<string, float> water_used_by_bloc <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
