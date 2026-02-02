@@ -41,6 +41,7 @@ global {
     // Reflects vacation, but trains don't move that much
     //list<float> monthly_ratios <- [0.06, 0.02, 0.03, 0.10, 0.04, 0.04, 0.15, 0.30, 0.02, 0.07, 0.02, 0.15];
     // flatter
+    // Pic aux vacances d'été et au nouvel an/noël
     list<float> monthly_ratios <- [0.07, 0.05, 0.05, 0.09, 0.06, 0.06, 0.12, 0.20, 0.05, 0.08, 0.05, 0.12];
     float max_ratio <- max(monthly_ratios);
 
@@ -96,7 +97,13 @@ global {
 	        }
 	    }
 	    transport_network <- as_edge_graph(transport_link);
-	    ask transport_link {write "Link from " + start_node.name + " to " + end_node.name + " length: " + (shape.perimeter / 1000) + " km";}
+	    float total_len <- 0.0;
+	    ask transport_link {
+	    	write "Link from " + start_node.name + " to " + end_node.name + " length: " + (shape.perimeter / 1000) + " km";
+	    	total_len <- total_len + shape.perimeter;
+	    }
+	    float avg_len <- total_len / length(transport_link);
+	    write "Total Length: " + total_len/1000 + "km, Avg: " + avg_len/1000 + "km";
 	    
 	    
 	    // Loading scale 3 data
@@ -114,13 +121,16 @@ global {
 	    
 	}
 	
+	// Un train fait 10 aller-retours par jour (justifications sur rapport ou csv)
+	int num_rides_per_day <- 10;
     reflex calculate_railway_infrastructure_usage {
     	km_usage["train"] <- 0.0;
     	vehicles_needed["train"] <- 0;
     	
     	ask transport_link { // loop over all links
     		if (daily_passengers > 0) {
-    			int trains_on_segment <- ceil((daily_passengers * scaling_factor) / train_capacity);
+    			int daily_capacity_per_train <- train_capacity * num_rides_per_day;
+    			int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
     			vehicles_needed["train"] <- vehicles_needed["train"] + trains_on_segment;
     			km_usage["train"] <- km_usage["train"] + (trains_on_segment * shape.perimeter);
     			daily_passengers <- 0.0;
@@ -146,9 +156,11 @@ species region_node {
 	string name;
 	int population;
 	aspect base {
-		draw circle(12#km) color: #red border: #black;
-		draw name at: location + {10#km, 10#km} color: #black font: font("Arial", 12, #bold);
-	}
+        int current_citizens <- citizen count (each.location = self.location);
+        
+        draw circle(12#km) color: #red border: #black;
+        draw name + " (" + current_citizens + ")" at: location + {10#km, 10#km} color: #black font: font("Arial", 12, #bold);
+    }
 }
 
 species transport_link {
@@ -185,7 +197,8 @@ species citizen {
 	int remaining_days <- 0;
 	
 	init {
-		home_region <- one_of(region_node);
+		//home_region <- one_of(region_node);
+		home_region <- region_node[rnd_choice(region_node collect each.population)];
 		location <- home_region.location;
 		if debug_write {write "Home region: " + home_region.name;}
 		do plan_yearly_travel;
