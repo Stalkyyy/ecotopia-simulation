@@ -281,8 +281,9 @@ species citizen {
         
         // Leisure: 1~5h (2h avg)
         float leisure_roll <- rnd(1.0);
-        if (leisure_roll < 0.5) { leisure_type <- "external"; }
-        else if (leisure_roll < 0.8) { leisure_type <- "outskirts"; }
+        if (leisure_roll < 0.25) { leisure_type <- "external"; }
+        else if (leisure_roll < 0.4) { leisure_type <- "outskirts"; }
+        else if (leisure_roll < 0.8) {leisure_type <- "city"; }
         else { leisure_type <- "home"; }
 
         loop i from: 1 to: 300 {
@@ -312,6 +313,8 @@ species citizen {
             leisure_location <- {center.x + dist * cos(angle), center.y + dist * sin(angle)};
         } else if (leisure_type = "external") { // we move to the train station (mini ville scale)
         	leisure_location <- train_station;
+        } else if (leisure_type = "city") {
+        	leisure_location <- city_agent.get_random_position_in_city();
         } else {
             leisure_location <- home;
         }
@@ -354,7 +357,7 @@ species citizen {
     
     reflex start_leisure when: current_date.hour = leisure_start_hour and activity = "idle" {
         activity <- "leisure";
-        if (leisure_type = "outskirts") {
+        if (leisure_type = "outskirts" or leisure_type = "city") {
             do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
             location <- leisure_location;
         } else if (leisure_type = "external") {
