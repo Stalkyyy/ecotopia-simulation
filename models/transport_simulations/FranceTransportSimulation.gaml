@@ -15,10 +15,10 @@ global {
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 10000;
+	int population_size <- 100;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
-	int real_population; // 65M, init from CSV regions
+	int real_population; // 68.25M, init from CSV regions
 	float scaling_factor; // init from CSV regions
 	
 	int train_capacity <- 500; // max
@@ -96,7 +96,7 @@ global {
     	}
     	real_population <- sum(region_populations.values);
     	scaling_factor <- real_population / float(population_size);
-    	write "CSV Loaded:\nFrance Pop: " + real_population+ "\nSimulation Pop: " + population_size;
+    	write "CSV Loaded:\nFrance Pop: " + real_population+ "\nSimulation Pop: " + population_size + "\nScaling Factor: " + scaling_factor;
     	
     	
     	// Arcs
@@ -124,16 +124,18 @@ global {
 	    
 	    
 	    // Loading scale 3 data
-	    matrix<string> city_data <- matrix<string>(csv_file("city_profile.csv"));
-	    if (data != nil and data.rows > 0) {
-	    	loop i from: 0 to: data.rows - 1 {
-	    		string key <- data[0, i];
-	    		float val <- float(data[1, i]);
-	    		if key != "parameter" {
-	    			city_mobility_profile[key] <- val;
-	    		}
-	    	}
-	    }
+	    // Actually we don't use it here anymore because it's train calculation,
+	    // we use the data created inside the main transport bloc instead.
+	    //matrix<string> city_data <- matrix<string>(csv_file("city_profile.csv"));
+	    //if (data != nil and data.rows > 0) {
+	    //	loop i from: 0 to: data.rows - 1 {
+	    //		string key <- data[0, i];
+	    //		float val <- float(data[1, i]);
+	    //		if key != "parameter" {
+	    //			city_mobility_profile[key] <- val;
+	    //		}
+	    //	}
+	    //}
 	    create citizen number: population_size;
 	    
 	}
