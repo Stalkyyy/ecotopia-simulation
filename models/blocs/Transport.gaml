@@ -378,8 +378,8 @@ species transport parent:bloc{
 		// ask for energy
 		ask transport_producer{
 			
-			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
-			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::required_cotton]);
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
+			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoEner["ok"]) {
 				if verbose_shortage {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
@@ -426,7 +426,7 @@ species transport parent:bloc{
     	ask transport_consumer{ // produce the required quantities
     		ask transport_producer{
     			loop c over: myself.consumed.keys{
-		    		map<string, unknown> info <- produce([c::myself.consumed[c]]); // send the demands to the producer
+		    		map<string, unknown> info <- produce("transport", [c::myself.consumed[c]]); // send the demands to the producer
 		    		// note : in this example, we do not take into account the 'ok' signal.
 		    	}
 		    }
@@ -468,8 +468,8 @@ species transport parent:bloc{
 		float required_energy <- quantity * vehicle_data[type]["creation_energy"] + required_cotton * kWh_per_kg_plastic;
 		// ask for energy
 		ask transport_producer{			
-			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::required_energy]);
-			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::required_cotton]);
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
+			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoEner["ok"]) {
 				if verbose_shortage {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
@@ -582,7 +582,7 @@ species transport parent:bloc{
 
 				// ask for energy
 				ask transport_producer{
-					map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::energy_needed]);
+					map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 					if not bool(infoEner["ok"]) {
 						if verbose_shortage {
 							write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
@@ -602,7 +602,7 @@ species transport parent:bloc{
 						// GES
 						float emissions <- distance_travelled * specs["emissions"];
 						producer.tick_emissions["gCO2e emissions"] <- producer.tick_emissions["gCO2e emissions"] + emissions;
-						do send_ges_to_ecosystem(emissions);
+						do send_ges_to_ecosystem("transport", emissions);
 					}
 					// track transport ressource not created because of missing energy and/or vehicles
 					tick_unfufilled_ressources["km/person_scale_3"] <- tick_unfufilled_ressources["km/person_scale_3"] + distance_travelled_penury;
@@ -652,7 +652,7 @@ species transport parent:bloc{
 
 		// ask for energy
 		ask transport_producer{
-			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::energy_needed]);
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 			if not bool(infoEner["ok"]) {
 				if verbose_shortage {
 					write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
@@ -674,7 +674,7 @@ species transport parent:bloc{
 				// GES
 				float emissions <- distance_travelled * specs["emissions"];
 				producer.tick_emissions["gCO2e emissions"] <- producer.tick_emissions["gCO2e emissions"] + emissions;
-				do send_ges_to_ecosystem(emissions);
+				do send_ges_to_ecosystem("transport", emissions);
 			}
 			// track transport ressource not created because of missing energy and/or vehicles
 			tick_unfufilled_ressources["km/person_scale_1"] <- tick_unfufilled_ressources["km/person_scale_1"] + distance_travelled_penury;
@@ -748,7 +748,7 @@ species transport parent:bloc{
 		}
 		
 		// produce ressources to answer a demand in transport 
-		map<string, unknown> produce(map<string,float> demand){
+		map<string, unknown> produce(string bloc_name, map<string,float> demand){
 			
 			
 			
@@ -797,7 +797,7 @@ species transport parent:bloc{
 						
 						// ask energy for the vehicles consumption
 						float energy_needed <- (vehicle_km * specs["consumption"]);
-						map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::energy_needed]);
+						map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 						if not bool(infoEner["ok"]) {
 							if verbose_shortage {
 								write("[TRANSPORT] Asked Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
@@ -815,7 +815,7 @@ species transport parent:bloc{
 							tick_production[service] <- tick_production[service] + sub_quantity;
 							float emissions <- vehicle_km * specs["emissions"];
 							tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
-							do send_ges_to_ecosystem(emissions);
+							do send_ges_to_ecosystem("transport", emissions);
 						}
 					}
 				}
