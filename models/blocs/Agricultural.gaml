@@ -103,8 +103,8 @@ global{
     
     float production_emissions_fertilizer <- 1.2;
     float CO2_fermentation <- 0.15;
-    float CO2_production <- 0.05;
-    float CO2_emission <- 0.01;
+    //float CO2_production <- 0.05;
+    //float CO2_emission <- 0.01;
     
     //map<float,int> time_to_fertilize <- [];
     list<map> fertilizer_batches <- [];
@@ -113,9 +113,9 @@ global{
     float kg_fertilizer_available <- 0.0;
     float kg_rotten_stock <- 0.0;
     float food_waste_received <- 0.0;
+    map<string, float> tick_fertilizer <- ["produced"::0.0, "applied"::0.0];
     
     map<string,float> production_this_tick <- ["kg_meat"::0.0, "kg_vegetables"::0.0, "kg_cotton"::0.0];
-    
     
     map<string, float> tick_resources_used_meat <- ["L water"::0.0, "kWh energy"::0.0, "m² land"::0.0, "km/kg_scale_2"::0.0];
 	map<string, float> tick_resources_used_veg  <- ["L water"::0.0, "kWh energy"::0.0, "m² land"::0.0, "km/kg_scale_2"::0.0];
@@ -385,6 +385,9 @@ species agricultural parent:bloc{
 	
 	
 	action production_fertilizer{
+		tick_fertilizer["produced"] <- 0.0;
+		tick_fertilizer["applied"] <- 0.0;
+
 		float qtte_vegetables <- production_this_tick["kg_vegetables"];
 		float qtte_cotton <- production_this_tick["kg_cotton"];
 
@@ -401,18 +404,16 @@ species agricultural parent:bloc{
 		
 		// transformation into fertilizer
 		float kg_fertilizer <- float(tranformation_into_fertilizer(kg_losses, kg_manure));
-				
-		//write "fertilizer " + kg_fertilizer;
-		// VOIR OU METTRE LE CO2 CREE
-		//tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + (production_emissions_fertilizer * kg_fertilizer);
+		tick_fertilizer["produced"] <- kg_fertilizer;
 		
+		float gco2e_fert_prod <- CO2_fermentation * kg_fertilizer;
+		tick_emissions_A["gCO2e emissions"] <- tick_emissions_A["gCO2e emissions"] + gco2e_fert_prod;
 		
 		// fertilizer stock update (aging)
 		if (!empty(fertilizer_batches)) {
 		
 		    list<map> keep <- [];
 		
-		    // itérer sur une copie pour éviter tout effet de bord
 		    loop b over: copy(fertilizer_batches) {
 		
 		        float t <- float(b["t"]) - 1.0;
@@ -712,9 +713,9 @@ species agricultural parent:bloc{
 		        	tick_pop_consumption_A[c] <- tick_pop_consumption_A[c] + float(res["transmitted_cotton"]); 
 		        }
 		        
-		        tick_production[c] <- tick_production[c] + deliver_real;	            
+		        tick_production[c] <- tick_production[c] + deliver_real - from_stock;	            
 		    }
-		
+		    		
 			//write res;
 		    return res;
 		}
@@ -749,8 +750,19 @@ species agricultural parent:bloc{
 			}
 						
 			float m2_per_kg_type <- production_output_inputs_A[type]["m² land"];
-			float kg_type_with_fertilizer <- nb_m2_with_fertilizer * m2_per_kg_type;
+			float kg_type_with_fertilizer <- nb_m2_with_fertilizer / max(m2_per_kg_type, 1e-9);
 			float additional_yield <- kg_type_with_fertilizer * fertilizer_yield_increase;
+			
+			//float gco2e_fert_apply <- CO2_emission * kg_type_with_fertilizer;
+			
+			/*ask one_of(agricultural){
+			    tick_emissions_A["gCO2e emissions"] <- tick_emissions_A["gCO2e emissions"] + gco2e_fert_apply;
+			}*/
+			
+			float kg_fertilizer_applied <- nb_m2_with_fertilizer * kg_fertilizer_per_m2;
+			ask one_of(agricultural){
+				tick_fertilizer["applied"] <- tick_fertilizer["applied"] + kg_fertilizer_applied;
+			}
 			
 			return additional_yield;
 		}
@@ -853,6 +865,10 @@ experiment run_agricultural type: gui {
 			}
 			chart "Chasse" type: series size: {0.5,0.5} position: {0, 1}{
 				data "hunted_kg" value:hunted_animals_kg;
+			}
+			chart "Engrais" type: series size: {0.5,0.5} position: {0.5, 1}{
+				data "kg engrais produits" value:tick_fertilizer["produced"];
+				data "kg engrais consommés" value:tick_fertilizer["applied"];				
 			}
 	    }
 	}
