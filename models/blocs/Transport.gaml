@@ -13,7 +13,7 @@ import "../API/API.gaml"
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
 global{
-
+	float completion <- 1.0;
 	bool verbose_shortage <- false;
 
 
@@ -302,7 +302,19 @@ species transport parent:bloc{
 	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // total number of vehicles left available
 	    	tick_vehicles_created_T <- vehicles_created;                   // number of vehicles created this tick 
 	    	tick_unfufilled_ressources_T <- tick_unfufilled_ressources;		// all ressources missing/unproduced
-	    		    	
+	    	
+	    	
+	    	float transport_completed <- 0.0;
+	    	float transport_penury <- 0.0;
+	    	loop r over: production_outputs_T{
+	    		transport_completed <- transport_completed + tick_production_T[r];
+	    		transport_penury <- transport_penury + tick_unfufilled_ressources_T[r];
+	    	}
+	    	completion <- transport_completed / (transport_completed+transport_penury);
+	    	ask transport_producer {
+		    	do send_transport_completion(completion);
+	    	}
+	    	
 	    	loop ressource over: tick_unfufilled_ressources.keys{
 	    		tick_unfufilled_ressources[ressource] <- 0.0;
 	    	}
@@ -934,10 +946,8 @@ experiment run_transport type: gui {
 			
 			// ROW 1
 			chart "Population direct consumption (km/person)" type: series size: {0.5,0.5} position: {-0.5, -0.25} y_log_scale: true {
-			    loop c over: ["km/person_scale_1", "km/person_scale_2", "km/person_scale_3"] {
-			    	// show km per scale
-			    	data c value: tick_production_T[c]; 
-			    }
+		    	data "km/person_scale_1/2" value: tick_production_T["km/person_scale_1"]; 
+		    	data "km/person_scale_3" value: tick_production_T["km/person_scale_3"]; 
 			}
 			chart "Production (km/kg)" type: series size: {0.5,0.5} position: {0, -0.25}  y_log_scale:true {
 			    loop c over: ["km/kg_scale_2"] {
@@ -988,6 +998,12 @@ experiment run_transport type: gui {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
 			}
+			
+		    chart "completion" type: series size: {0.5, 0.5} position: {1, 0.25}  y_log_scale:true {
+		        transport t_agent <- first(transport);
+		        data "completion" value: completion;
+		    }
+
 //			chart "Trains age remaining" type: series size: {0.5, 0.5} position: {0.5, 0.25}  y_log_scale:true {
 //		        transport t_agent <- first(transport);
 //		        if (t_agent != nil) {
