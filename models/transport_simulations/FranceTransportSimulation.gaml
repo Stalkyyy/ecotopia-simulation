@@ -284,7 +284,7 @@ species citizen {
 		if debug_write {write "[Misc] " + num_misc_trips + "x\nDays: " + travel_plan;}
 		
 		// Leisure trips: 0.5 / week (half of them are on scale 3)
-		int num_leisure_trips <- poisson(26);
+		int num_leisure_trips <- poisson(106);
         loop times: num_leisure_trips {
             int leisure_day <- rnd(0, 364);
             if (travel_plan[leisure_day] = nil) {
@@ -332,10 +332,12 @@ species citizen {
 	
 	action execute_trip(region_node origin, region_node destination) {
 		if (activity = "leisure" and active_trip.nature_target != nil) {
-            // Create a temporary link for this specific nature spot
+			// temp link
             create leisure_link {
-                start_node <- origin;
-                shape <- line([origin.location, myself.active_trip.nature_target]);
+                //start_node <- origin;
+                //shape <- line([origin.location, myself.active_trip.nature_target]);
+                // using home_region -> nature_target to ensure identical dist for departure and return
+                shape <- line([myself.home_region.location, myself.active_trip.nature_target]);
                 daily_passengers <- 1.0;
             }
         } else if (origin != destination) {
@@ -350,6 +352,8 @@ species citizen {
 	aspect base {
 		if debug_write{
 			draw circle(10000) color: #yellow;	
+		} else {
+			draw circle(1000) color: #yellow;
 		}
     }
 }
