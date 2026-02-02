@@ -355,7 +355,7 @@ ask cities {
 		if(total_energy_need > 0){
 			map<string, float> energy_demand <- ["kWh energy"::total_energy_need];
 			// If energy is missing, producer will return ok=false; we still record demanded amounts separately if needed later
-			map<string, unknown> info <- producer.produce(energy_demand);
+			map<string, unknown> info <- producer.produce("urbanism", energy_demand);
 		}
 	}
 
@@ -380,7 +380,7 @@ ask cities {
 			}
 		}
 
-		map<string, unknown> info <- producer.produce(c.pending_demand);
+		map<string, unknown> info <- producer.produce("urbanism", c.pending_demand);
 		if(!bool(info["ok"])) { tick_commit_fails <- tick_commit_fails + 1; }
 		if(bool(info["ok"])) {
 			ask c { do start_build; }
@@ -613,7 +613,7 @@ species urban_producer parent: production_agent{
 		return ["ok"::ok];
 	}
 
-	map<string, unknown> produce(map<string, float> demand){
+	map<string, unknown> produce(string bloc_name, map<string, float> demand){
 		// Two-phase: dry-run feasibility check before consuming anything
 		map<string, unknown> pre <- can_produce(demand);
 		if(!bool(pre["ok"])) { return ["ok"::false]; }
@@ -629,7 +629,7 @@ species urban_producer parent: production_agent{
 			if(r in demand.keys){
 				float qty <- demand[r];
 				if(external_producers.keys contains r){
-					map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+					map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
 					if not bool(info["ok"]) {
 						ok <- false;
 					} else {
@@ -651,7 +651,7 @@ species urban_producer parent: production_agent{
 			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
 			float qty <- demand[r];
 			if(external_producers.keys contains r){
-				map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+				map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
 				if not bool(info["ok"]) {
 					ok <- false;
 				} else {
@@ -703,7 +703,7 @@ species urban_producer parent: production_agent{
 					if(eco_bloc = nil){
 						ok <- false;
 					} else {
-						map<string, unknown> info <- eco_bloc.producer.produce(eco_demand);
+						map<string, unknown> info <- eco_bloc.producer.produce(bloc_name, eco_demand);
 						if not bool(info["ok"]) {
 							ok <- false;
 						} else {
