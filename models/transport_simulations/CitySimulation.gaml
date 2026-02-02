@@ -195,8 +195,15 @@ species citizen {
     action plan_weekly_schedule {
         // Work days: 3.5 days/week avg -> 3 or 4 days
         int nb_work_days <- flip(0.5) ? 3 : 4;
+        list<float> day_weights <- [1.0, 1.0, 0.4, 1.0, 1.0, 0.2, 0.05]; // less work on sunday etc
         list<int> possible_days <- [0, 1, 2, 3, 4, 5, 6];
-        list<int> my_work_days <- nb_work_days among possible_days;
+        list<int> my_work_days <- [];
+        loop while: length(my_work_days) < nb_work_days {
+	        int candidate <- rnd_choice(day_weights);
+	        if !(candidate in my_work_days) {
+	            my_work_days << candidate;
+	        }
+	    }
         
 		// Errand day (0.5 per week per person -> half the pop has 1 errand)
         int my_errand_day <- -1;
