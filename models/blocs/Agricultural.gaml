@@ -15,6 +15,8 @@ import "../blocs/Demography.gaml"
  */
 global{
 	
+	float nb_humans_per_agent <- 19500.0;
+	
 	/* Setup */
 	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables", "kg_cotton"];
 	list<string> production_inputs_A <- ["L water", "kWh energy", "m² land", "km/kg_scale_2"];

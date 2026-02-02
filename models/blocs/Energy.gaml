@@ -17,6 +17,7 @@ global {
 	 
 	// Time scale (must stay consistent with Demography: 12 ticks = 1 year)
 	int nb_ticks_per_year <- 12;
+	float nb_humans_per_agent <- 19500.0;
 	
 	// Initial production capacity for initial infrastructure (= total energy consumption, all sources, France)
 	float initial_total_capacity_kwh <- 1.254e12 / nb_ticks_per_year;	
@@ -1089,7 +1090,7 @@ species energy parent:bloc {
 			individual_kwh <- max(human_cfg["min_kwh_conso"], min(individual_kwh, human_cfg["max_kwh_conso"]));
 			
 			// Add to total consumption
-			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * human_cfg["humans_per_agent"];
+			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * nb_humans_per_agent;
 		}
 	}
 }

@@ -142,7 +142,8 @@ global{
 	}
 	
 	float kWh_per_kg_plastic <- 19.4;
-	float humans_per_agent <- 6700.0;
+	float nb_humans_per_agent <- 19500.0;
+	// float humans_per_agent <- 6700.0;
 }
 
 
@@ -914,7 +915,7 @@ species transport parent:bloc{
 		
 		action consume(human h){
 		    loop c over: individual_consumption_T.keys{
-		    	consumed[c] <- consumed[c] + individual_consumption_T[c] * humans_per_agent;
+		    	consumed[c] <- consumed[c] + individual_consumption_T[c] * nb_humans_per_agent;
 		    }
 	    }
 	}
