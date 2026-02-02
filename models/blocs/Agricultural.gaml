@@ -542,7 +542,7 @@ species agricultural parent:bloc{
 		
 		
 		
-		map<string, unknown> produce(map<string,float> demand){
+		map<string, unknown> produce(string bloc_name, map<string,float> demand){
 		    bool ok <- true;
 		    map<string,map<string, unknown>> data_production;
 		    		    
@@ -613,7 +613,7 @@ species agricultural parent:bloc{
 	                    	// a modifier : là on envoie tout, y cormpris la surproduction
 	                        quantity_needed <- production_output_inputs_A[c][u] * deliver_remaining;
 								
-	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_transport <- float(info["transmitted_km/kg_scale_2"]);
 	                        	float ratio <- float(transmitted_transport/quantity_needed);
@@ -636,7 +636,7 @@ species agricultural parent:bloc{
 	                            continue;
 	                        }
 	                        
-	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_land <- float(info["transmitted_m² land"]);
 	                        	float ratio <- float(transmitted_land/quantity_needed);
@@ -650,7 +650,7 @@ species agricultural parent:bloc{
 	                    }
 	                    
 	                    if(u = "L water"){
-	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_water <- float(info["transmitted_L water"]);
 	                        	float ratio <- float(transmitted_water/quantity_needed);
@@ -664,7 +664,7 @@ species agricultural parent:bloc{
 	                    }
 	                    
 	                    if(u = "kWh energy"){
-	                        map<string, unknown> info <- external_producers[u].producer.produce([u::quantity_needed]);
+	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        write "info : " + info;
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
@@ -684,7 +684,7 @@ species agricultural parent:bloc{
 		        loop e over: production_emissions_A{
 	                float quantity_emitted <- production_output_emissions_A[c][e] * deliver_remaining;
 	                tick_emissions[e] <- tick_emissions[e] + quantity_emitted;
-	                do send_ges_to_ecosystem(tick_emissions[e]);
+	                do send_ges_to_ecosystem("agriculture", tick_emissions[e]);
 	            }
 	
 	            tick_production[c] <- tick_production[c] + deliver;
