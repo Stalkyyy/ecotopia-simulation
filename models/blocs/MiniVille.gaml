@@ -7,7 +7,7 @@ model MiniVille
 
 global{
 	// Mini-ville initialization (v1: fixed number, no creation/destruction)
-	int mini_ville_count <- 550;
+	int mini_ville_count <- 6500;
 	float total_area_per_ville <- 2e6; // m2 per mini-ville
 	float buildable_ratio <- 0.4;
 	float green_ratio <- 0.4;
@@ -23,7 +23,7 @@ float annual_decay_rate_default <- 0.002;      // per year
 int decay_period_cycles_default <- 12;         // cycles between decay events
 float decay_land_recovery_fraction_default <- 1.0; // 1.0 = fully recover land on decay
 bool debug_decay_log_default <- false;
-	float initial_fill_ratio <- 0.2; // share of buildable area already used at init
+	float initial_fill_ratio <- 0.3; // share of buildable area already used at init
 
 	// Housing capacity per unit (shared baseline)
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit

@@ -41,7 +41,7 @@ global{
 	float occupancy_hysteresis <- 0.01;         // avoid flip-flop around the target
 	float occupancy_rate <- 0.0;             // population_real / capacity_effective
 	float build_fraction_of_deficit <- 0.25;     // build only a fraction of the deficit per tick (tune)
-	int max_units_per_tick <- 5000;            // CAP in *real* housing units / tick (tune later)
+	int max_units_per_tick <- 7000;            // CAP in *real* housing units / tick (tune later)
 	int min_units_per_tick <- 0;
 
 	// Construction pipeline timing (interpretation: 1 tick = 1 month)
