@@ -665,7 +665,7 @@ species agricultural parent:bloc{
 	                    
 	                    if(u = "kWh energy"){
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
-	                        write "info : " + info;
+	                        // write "info : " + info;
 	                        if not bool(info["ok"]) { 
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
 	                        	float ratio <- float(transmitted_energy/quantity_needed);
