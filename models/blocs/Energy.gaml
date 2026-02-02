@@ -314,7 +314,7 @@ species energy parent:bloc {
     	ask energy_consumer{ // produce the required quantities
     		ask energy_producer{
     			loop c over: myself.consumed.keys{
-		    		do produce([c::myself.consumed[c]]);
+		    		do produce("energy", [c::myself.consumed[c]]);
 		    	}
 		    } 
     	}
@@ -492,7 +492,7 @@ species energy parent:bloc {
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		map<string, unknown> produce(map<string, float> demand) {
+		map<string, unknown> produce(string bloc_name, map<string, float> demand) {
 			float total_energy_demanded <- 0.0;
 			if ("kWh energy" in demand.keys) {
 				total_energy_demanded <- demand["kWh energy"];
@@ -518,7 +518,7 @@ species energy parent:bloc {
 				string source_name <- sub_producer.get_source_name();		
 				float source_energy_requested <- gross_energy_demanded * mix_ratios[source_name];
 				ask sub_producer {
-					map<string, unknown> info <- produce(["kWh energy"::source_energy_requested]);
+					map<string, unknown> info <- produce("energy", ["kWh energy"::source_energy_requested]);
 					if ("allocated_kwh" in info.keys) {
 						total_allocated_gross_kwh <- total_allocated_gross_kwh + float(info["allocated_kwh"]);
 					}
@@ -850,13 +850,13 @@ species energy parent:bloc {
 			
 			// Request construction/maintenance resources (water & cotton)
 			if (site_phase_water > 0.0 and "L water" in external_producers.keys) {
-				map<string, unknown> info_w <- external_producers["L water"].producer.produce(["L water"::site_phase_water]);
+				map<string, unknown> info_w <- external_producers["L water"].producer.produce("energy", ["L water"::site_phase_water]);
 				if (bool(info_w["ok"])) {
 					tick_resources_used["L water"] <- tick_resources_used["L water"] + site_phase_water;
 				}
 			}
 			if (site_phase_cotton > 0.0 and "kg_cotton" in external_producers.keys) {
-				map<string, unknown> info_c <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::site_phase_cotton]);
+				map<string, unknown> info_c <- external_producers["kg_cotton"].producer.produce("energy", ["kg_cotton"::site_phase_cotton]);
 				if (bool(info_c["ok"])) {
 					tick_resources_used["kg_cotton"] <- tick_resources_used["kg_cotton"] + site_phase_cotton;
 				}
@@ -920,7 +920,7 @@ species energy parent:bloc {
 			if ("m² land" in external_producers.keys) {
 				int built <- 0;
 				loop i from:1 to:installations_needed {
-					map<string, unknown> info <- external_producers["m² land"].producer.produce(["m² land"::land_per_site]);
+					map<string, unknown> info <- external_producers["m² land"].producer.produce("energy", ["m² land"::land_per_site]);
 					if (bool(info["ok"])) {
 						built <- built + 1;
 					} else {
@@ -975,7 +975,7 @@ species energy parent:bloc {
 			if (water_to_ask > 0 and "L water" in external_producers.keys){
 				loop while: water_to_ask > 0 {
 					float water_chunk <- min(water_asked_per_loop, water_to_ask);
-					map<string, unknown> info <- external_producers["L water"].producer.produce(["L water"::water_chunk]);
+					map<string, unknown> info <- external_producers["L water"].producer.produce("energy", ["L water"::water_chunk]);
 					bool water_ok <- bool(info["ok"]);
 					if (water_ok) {
 						water_to_ask <- water_to_ask - water_chunk;
@@ -1001,7 +1001,7 @@ species energy parent:bloc {
 			}
 			
 			float emissions_g <- actual_alloc_kwh * energy_cfg[source_name]["emissions_per_kwh"];
-			do send_ges_to_ecosystem(emissions_g);
+			do send_ges_to_ecosystem("energy", emissions_g);
 			
 			// Water accounting: part is consumed, the rest is reinjected
 			float water_consumed <- actual_alloc_kwh * water_consumption_per_kwh;
@@ -1026,7 +1026,7 @@ species energy parent:bloc {
 		/**
 		 * Execute energy production for this source to meet a specified demand. 
 		 */
-		map<string, unknown> produce(map<string, float> demand) {
+		map<string, unknown> produce(string bloc_name, map<string, float> demand) {
 			if("kWh energy" in demand.keys) {
 				float req <- demand["kWh energy"];
 				if (req <= 0) {

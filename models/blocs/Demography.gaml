@@ -236,7 +236,7 @@ species residents parent:bloc{
         ask residents_consumer{ // produce the required quantities
             ask residents_producer{
                 loop c over: myself.consumed.keys{
-                    do produce([c::myself.consumed[c]]);
+                    do produce("population", [c::myself.consumed[c]]);
                 }
             } 
         }
@@ -714,7 +714,7 @@ species residents parent:bloc{
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		map<string, unknown> produce(map<string, float> demand){
+		map<string, unknown> produce(string bloc_name, map<string, float> demand){
 			bool ok <- true;
 			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
 			loop r over: demand.keys{
@@ -725,7 +725,7 @@ species residents parent:bloc{
 					// 	 ok <- false;
 					// }
 					
-					map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+					map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
 					if not bool(info["ok"]) {
 						ok <- false;
 					}
