@@ -14,7 +14,7 @@ import "../API/API.gaml"
  */
 global{
 
-	bool verbose_shortage <- true;
+	bool verbose_shortage <- false;
 
 
 	/* Setup */
@@ -114,7 +114,7 @@ global{
 	
 	/* Consumption data */
 	map<string, float> individual_consumption_T <- [
-		"km/person_scale_1"::1636.0,
+//		"km/person_scale_1"::1636.0,
 		"km/person_scale_2"::1520.0
 //		"km/person_scale_3"::47.2
 		//"km/kg_scale_1"::0, none since it's the population consumption
@@ -157,7 +157,6 @@ species transport parent:bloc{
 	// this number decreases when vehicles reach their end of lifetime, it increases when a new vehicle is created
 	map<string, int> number_of_vehicles <- []; // initialized in setup()
 	map<string, int> number_of_vehicles_cities <- []; // separated from the main one because we recount the available stock from each city at each tick
-
 
 
 	// CODE :
@@ -246,11 +245,13 @@ species transport parent:bloc{
 	action tick(list<human> pop, list<mini_ville> cities){
 		do collect_last_tick_data();
 		
+		do update_vehicle_numbers();
+		do population_activity(pop);
+
 		do update_city_vehicles(cities);
 		do city_population_activity(cities);
 		
-		do update_vehicle_numbers();
-		do population_activity(pop);
+		do france_train_population_activity(pop);
 	}
 	
 	// action to set an other bloc to produce ressources for us (Energy Bloc as our producer of energy)
@@ -448,9 +449,9 @@ species transport parent:bloc{
     map<string, int> get_required_vehicles_per_tick(int population) {
     	map<string, int> required_vehicles_this_tick <- [];
     	float ratio <- population / 10000;
-    	required_vehicles_this_tick["taxi"] <- required_vehicles_per_tick_for_10k_citizens["taxi"] * ratio;
-    	required_vehicles_this_tick["minibus"] <- required_vehicles_per_tick_for_10k_citizens["minibus"] * ratio;
-    	required_vehicles_this_tick["bicycle"] <- required_vehicles_per_tick_for_10k_citizens["bicycle"] * ratio;
+    	required_vehicles_this_tick["taxi"] <- int(ceil(required_vehicles_per_tick_for_10k_citizens["taxi"] * ratio));
+    	required_vehicles_this_tick["minibus"] <- int(ceil(required_vehicles_per_tick_for_10k_citizens["minibus"] * ratio));
+    	required_vehicles_this_tick["bicycle"] <- int(ceil(required_vehicles_per_tick_for_10k_citizens["bicycle"] * ratio));
     	return required_vehicles_this_tick;
     }
     
@@ -550,6 +551,17 @@ species transport parent:bloc{
 
 				// check if the city has enough vehicles for the
 				int required_vehicles <- required_vehicles_this_tick[v];
+				if v = "walk" {
+					// for walk accept it here directly, (division by 0 later otherwise)
+					float km_per_tick_per_10k_person <- c.vehicle_data[v]["km_per_tick_per_10k_person"];
+					float ratio <- population / 10000;
+					float distance_travelled <- km_per_tick_per_10k_person * ratio;
+					ask transport_producer{
+						tick_production["km/person_scale_3"] <- tick_production["km/person_scale_3"] + distance_travelled;
+						tick_vehicle_usage[v] <- tick_vehicle_usage[v] + distance_travelled;
+					}
+					continue;
+				}
 				if required_vehicles <= 0 {
 					continue;
 				}
@@ -599,7 +611,78 @@ species transport parent:bloc{
 		}
 	}
     	
-    	// ^^^ CITY CODE ^^^
+	// ^^^ CITY CODE ^^^
+	
+    int required_trains_per_tick_for_65m_citizens <- 10000;		// TODO: value from simulation at scale 1
+    float train_km_per_tick_per_65m_person <- 650000000.0;		// TODO: value from simulation at scale 1
+	
+	action france_train_population_activity(list<human> pop) {
+		// age/number of trains already updated by update_vehicle_numbers()
+		string t <- "train";
+		int population <- length(pop) * 6500;
+		float ratio_population_to_65m <- population / 65000000;
+		// check if we need to create more trains for the current population :
+		float trains_required_this_tick <- required_trains_per_tick_for_65m_citizens * ratio_population_to_65m;
+		
+		int additional_trains_needed <- int(ceil(trains_required_this_tick - number_of_vehicles_available[t]));
+		if additional_trains_needed > 0 {
+			// need to create more vehicles
+			bool success <- create_new_vehicles_city(t, additional_trains_needed);	// create_new_vehicles_city works well with trains too
+
+			// if no penury : update the number of trains
+			if success {
+				number_of_vehicles_available[t] <- number_of_vehicles_available[t] + additional_trains_needed;
+				number_of_vehicles[t] <- number_of_vehicles[t] + additional_trains_needed;
+				vehicles_age[t][0] <- vehicles_age[t][0] + additional_trains_needed;
+			}
+		}
+		// trains_available_ratio is the ratio of trains available to required vehicles (bounded to [0,1])
+		float trains_available_ratio <- max(min((number_of_vehicles_available[t] / trains_required_this_tick),1.0),0.0);
+		
+		float km_per_tick_per_65m_person <- train_km_per_tick_per_65m_person;
+		float distance_travelled_ideal <- km_per_tick_per_65m_person * ratio_population_to_65m;
+		float distance_travelled <- distance_travelled_ideal * trains_available_ratio;	// distance travelled after we take into account missing vehicles
+		// distance_travelled_penury = how much SHOULD have been traveled but lost due to insufficient vehicles
+		float distance_travelled_penury <- distance_travelled_ideal - distance_travelled;
+		float trains_used_in_total <- trains_required_this_tick * trains_available_ratio;
+
+		map<string, float> specs <- vehicle_data[t];
+		float energy_needed <- (distance_travelled * specs["consumption"]);
+
+		// ask for energy
+		ask transport_producer{
+			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce(["kWh energy"::energy_needed]);
+			if not bool(infoEner["ok"]) {
+				if verbose_shortage {
+					write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
+				}
+				// penury :
+				tick_unfufilled_ressources["kWh energy"] <- tick_unfufilled_ressources["kWh energy"] + energy_needed;
+				// add the rest of the distance that should be travelled to the penury
+				distance_travelled_penury <- distance_travelled_penury + distance_travelled;
+			}
+			else {
+				// transport ressource successfully created
+				float trains_remaining <- number_of_vehicles_available[t] - trains_used_in_total;
+				number_of_vehicles_available[t] <- max(trains_remaining , 1.0);	// left a minimum of 1 because it might completely crash the simulation if it goes at or below 0
+				// track production and usage
+				tick_production["km/person_scale_1"] <- tick_production["km/person_scale_1"] + distance_travelled;
+				tick_vehicle_usage[t] <- tick_vehicle_usage[t] + distance_travelled;
+				
+				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_needed;
+				// GES
+				float emissions <- distance_travelled * specs["emissions"];
+				producer.tick_emissions["gCO2e emissions"] <- producer.tick_emissions["gCO2e emissions"] + emissions;
+				do send_ges_to_ecosystem(emissions);
+			}
+			// track transport ressource not created because of missing energy and/or vehicles
+			tick_unfufilled_ressources["km/person_scale_1"] <- tick_unfufilled_ressources["km/person_scale_1"] + distance_travelled_penury;
+		}
+	}
+    	
+    	
+    	
+    	
     	
     	
     	
@@ -726,7 +809,7 @@ species transport parent:bloc{
 						} else {
 							// Success
 							tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_needed;
-							number_of_vehicles_available[v] <- max(vehicles_remaining, 1.0);
+							number_of_vehicles_available[v] <- max(vehicles_remaining, 1.0);	// left a minimum of 1 otherwise it will completely crash the simulation for some reason
 							tick_vehicle_usage[v] <- tick_vehicle_usage[v] + vehicle_km;
 							tick_production[service] <- tick_production[service] + sub_quantity;
 							float emissions <- vehicle_km * specs["emissions"];
@@ -866,7 +949,7 @@ experiment run_transport type: gui {
 			// ROW 3
 			chart "Total Vehicles" type: series size: {0.5,0.5} position: {-0.5, 0.75} y_log_scale:true {
 			    loop v over: (vehicles) {
-			    	if (v = "walk") or (v = "bicycle") or (v = "minibus") or (v = "taxi") {
+			    	if (v = "walk") {
 			    		continue;
 			    	}
 			    	data v value: tick_vehicle_available_T[v];
