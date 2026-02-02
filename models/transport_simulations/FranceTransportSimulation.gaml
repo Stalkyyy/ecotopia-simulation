@@ -15,7 +15,7 @@ global {
 	
 	float step <- 1 #day;
 	int simulation_duration <- 365;
-	int population_size <- 10000;
+	int population_size <- 100;
 	bool debug_write <- population_size = 1; // debug when population size 1
 	
 	int real_population; // 65M, init from CSV regions
@@ -29,6 +29,14 @@ global {
 	float total_km_accumulated <- 0.0;
     float peak_km_day <- 0.0;
     int max_trains_needed <- 0;
+    
+    float total_km_regional <- 0.0;
+    float total_km_local <- 0.0;
+    float peak_km_regional <- 0.0;
+    float peak_km_local <- 0.0;
+    
+    float daily_km_regional_val <- 0.0;
+    float daily_km_local_val <- 0.0;
 	
 	map<string, point> region_coords <- [];
     map<string, int> region_populations <- [];
@@ -128,36 +136,62 @@ global {
 	// Un train fait 10 aller-retours par jour (justifications sur rapport ou csv)
 	int num_rides_per_day <- 10;
     reflex calculate_railway_infrastructure_usage {
-    	km_usage["train"] <- 0.0;
-    	vehicles_needed["train"] <- 0;
+    	float daily_km_reg <- 0.0;
+        float daily_km_loc <- 0.0;
+        int daily_trains <- 0;
+        
+        int daily_capacity_per_train <- train_capacity * num_rides_per_day;
+        
+        // Scale 1
+        ask transport_link {
+            if (daily_passengers > 0) {
+                int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
+                daily_trains <- daily_trains + trains_on_segment;
+                daily_km_reg <- daily_km_reg + (trains_on_segment * (shape.perimeter / 1000.0));
+                daily_passengers <- 0.0;
+            }
+        }
+
+        // Scale 2
+        ask leisure_link {
+            if (daily_passengers > 0) {
+                int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
+                daily_trains <- daily_trains + trains_on_segment;
+                daily_km_loc <- daily_km_loc + (trains_on_segment * (shape.perimeter / 1000.0));
+            }
+        }
+        
+        daily_km_regional_val <- daily_km_reg;
+    	daily_km_local_val <- daily_km_loc;
+    	km_usage["train"] <- daily_km_reg + daily_km_loc;
+    	vehicles_needed["train"] <- daily_trains;
     	
-    	list<transport_link> all_segments <- transport_link + leisure_link; // arcs + local
-    	
-    	
-    	ask all_segments { // loop over all links
-    		if (daily_passengers > 0) {
-    			int daily_capacity_per_train <- train_capacity * num_rides_per_day;
-    			int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
-    			vehicles_needed["train"] <- vehicles_needed["train"] + trains_on_segment;
-    			km_usage["train"] <- km_usage["train"] + (trains_on_segment * shape.perimeter);
-    			daily_passengers <- 0.0;
-    		}
-    	}
-    	ask leisure_link { do die; }
-    	
-    	total_km_accumulated <- total_km_accumulated + km_usage["train"];
+    	total_km_regional <- total_km_regional + daily_km_reg;
+        total_km_local <- total_km_local + daily_km_loc;
+        total_km_accumulated <- total_km_regional + total_km_local;
+        
+        if (daily_km_reg > peak_km_regional) { peak_km_regional <- daily_km_reg; }
+        if (daily_km_loc > peak_km_local) { peak_km_local <- daily_km_loc; }
         if (km_usage["train"] > peak_km_day) { peak_km_day <- km_usage["train"]; }
-        if (vehicles_needed["train"] > max_trains_needed) { max_trains_needed <- vehicles_needed["train"]; }
+        if (daily_trains > max_trains_needed) { max_trains_needed <- daily_trains; }
+
+        ask leisure_link { do die; }
     }
     
     reflex stop_simulation when: cycle >= simulation_duration {
     	string csv_str <- "france_transport_results.csv";
-        save ["Metric", "Value"] to: csv_str rewrite: true;
-        save ["total_km_year", total_km_accumulated] to: csv_str rewrite: false;
-        save ["peak_km_single_day", peak_km_day] to: csv_str rewrite: false;
-        save ["max_trains_required", max_trains_needed] to: csv_str rewrite: false;
-        write "Saved to " + csv_str; 
-    	do pause;
+		save ["Metric", "Value"] to: csv_str rewrite: true;
+		save ["total_km_year_combined", int(total_km_accumulated)] to: csv_str rewrite: false;
+		save ["total_km_month_combined", int(total_km_accumulated / 12)] to: csv_str rewrite: false;
+		save ["total_km_year_scale1", int(total_km_regional)] to: csv_str rewrite: false;
+		save ["total_km_month_scale1", int(total_km_regional / 12)] to: csv_str rewrite: false;
+		save ["total_km_year_scale2", int(total_km_local)] to: csv_str rewrite: false;
+		save ["total_km_month_scale2", int(total_km_local / 12)] to: csv_str rewrite: false;
+		save ["peak_km_day_scale1", peak_km_regional] to: csv_str rewrite: false;
+		save ["peak_km_day_scale2", peak_km_local] to: csv_str rewrite: false;
+		save ["max_trains_required", max_trains_needed] to: csv_str rewrite: false;
+		write "Saved results to " + csv_str;
+        do pause;
     }
 }
 
@@ -258,8 +292,32 @@ species citizen {
 	            }
 	        }
 	        if (cycle > 1000) { break; } 
-	    }
-		if debug_write {write "[Work] " + num_professional_trips + "x";}
+	    }if debug_write {write "[Scale1 Work] " + num_professional_trips + "x";}
+	    
+	    // Work: scale 2: 2x per week
+	    loop week from: 0 to: 51 {
+            int commutes_placed <- 0;
+            int attempts <- 0;
+            loop while: (commutes_placed < 2) and (attempts < 20) {
+            	attempts <- attempts + 1; 
+                int day <- (week * 7) + rnd(0, 6);
+                if (day < 365) {
+                	bool is_vacation <- (day >= 212 and day <= 243) or (day >= 355);
+                	if (!is_vacation and travel_plan[day] = nil) {
+	                    create trip {
+	                        type <- "work";
+	                        // 1-10km of home node ~ constellations
+	                        geometry donut <- circle(10#km) - circle(1#km);
+	                        nature_target <- any_location_in(donut at_location myself.home_region.location);
+	                        destination <- myself.home_region; 
+	                        duration <- 1;
+	                        myself.travel_plan[day] <- self;
+	                    }
+	                    commutes_placed <- commutes_placed + 1;
+	                }
+                }
+            }
+        }
 		
 		// Misc trips: 1 / month (instead of /week of CDC), on average 5.2 days long
 		int num_misc_trips <- poisson(12);
@@ -300,19 +358,6 @@ species citizen {
 	}
 	
 	reflex manage_travel {
-        // Starting new trip
-        if (active_trip = nil and travel_plan[cycle] != nil) {
-            active_trip <- travel_plan[cycle];
-            remaining_days <- active_trip.duration;
-            activity <- active_trip.type;
-            location <- (activity = "leisure") ? active_trip.nature_target : active_trip.destination.location;
-        	if debug_write {write "Day " + cycle + ", travelling to " + active_trip.destination.name;}
-            
-            do execute_trip(home_region, active_trip.destination);
-            
-            if debug_write { write "Starting " + activity + " trip to " + active_trip.destination.name + " for " + remaining_days + " days"; }
-        } 
-        
         // Already on a trip
         if (active_trip != nil) {
             remaining_days <- remaining_days - 1;
@@ -328,14 +373,26 @@ species citizen {
                 activity <- "local";
             }
         }
+        // Starting new trip
+        if (active_trip = nil and travel_plan[cycle] != nil) {
+            active_trip <- travel_plan[cycle];
+            remaining_days <- active_trip.duration;
+            activity <- active_trip.type;
+            location <- (active_trip.nature_target != nil) ? active_trip.nature_target : active_trip.destination.location;
+            
+        	if debug_write {write "Day " + cycle + ", travelling to " + active_trip.destination.name;}
+            
+            do execute_trip(home_region, active_trip.destination);
+            
+            if debug_write { write "Starting " + activity + " trip to " + active_trip.destination.name + " for " + remaining_days + " days"; }
+        }
     }
 	
 	action execute_trip(region_node origin, region_node destination) {
-		if (activity = "leisure" and active_trip.nature_target != nil) {
+		//if (activity = "leisure" and active_trip.nature_target != nil) {
+		if (active_trip.nature_target != nil) {
 			// temp link
             create leisure_link {
-                //start_node <- origin;
-                //shape <- line([origin.location, myself.active_trip.nature_target]);
                 // using home_region -> nature_target to ensure identical dist for departure and return
                 shape <- line([myself.home_region.location, myself.active_trip.nature_target]);
                 daily_passengers <- 1.0;
@@ -350,11 +407,16 @@ species citizen {
         }
 	}
 	aspect base {
-		if debug_write{
-			draw circle(10000) color: #yellow;	
-		} else {
-			draw circle(1000) color: #yellow;
-		}
+        rgb agent_color <- #gray;
+        if (activity = "work") { agent_color <- #red; }
+        else if (activity = "misc") { agent_color <- #blue; }
+        else if (activity = "leisure") { agent_color <- #green; }
+        
+        draw circle(1000) color: agent_color;
+        
+        if debug_write {
+            draw circle(10000) color: agent_color;	
+        }
     }
 }
 
@@ -381,9 +443,11 @@ experiment france_simulation type: gui {
 				data "Misc Trip" value: citizen count (each.activity = "misc") color: #blue;
 				data "Leisure" value: citizen count (each.activity = "leisure") color: #green;
 			}
-			chart "Cumulative km usage / day" type: series size: {0.5, 0.5} position: {0, 0.5} y_log_scale: false {
-				data "Train" value: km_usage["train"] color: #blue;
-			}
+			chart "Daily Km Usage (Split)" type: series size: {0.5, 0.5} position: {0, 0.5} {
+		        data "Total KM" value: km_usage["train"] color: #black;
+		        data "Regional (Scale 1)" value: daily_km_regional_val color: #blue;
+		        data "Local (Scale 2)" value: daily_km_local_val color: #green;
+		    }
 			chart "Vehicles needed" type: series size: {0.5, 0.5} position: {0.5, 0.5} {
 				data "Trains" value: vehicles_needed["train"] color: #blue;
 			}
