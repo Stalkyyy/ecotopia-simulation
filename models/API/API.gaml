@@ -25,7 +25,6 @@ species bloc{
 	
 	/* Execute the next tick */
 	action tick(list<human> pop, list<mini_ville> cities) virtual:true;
-	action tick(list<human> pop, list<mini_ville> cities) virtual:true;
 	
 	/* Returns the labels of the resources used by this bloc for production (inputs) */
 	action get_input_resources_labels virtual:true type:list<string>;
@@ -61,6 +60,13 @@ species production_agent{
 	action send_ges_to_ecosystem(string bloc_name, float ges) {
 		ask ecosystem {
 			do receive_ges_emissions(bloc_name, ges);
+		}
+	}
+	
+	/* Reinject water withdrawn but not consumed back into the ecosystem water stock */
+	action reinject_water_to_ecosystem(float water_l) {
+		ask ecosystem {
+			do receive_water_reinjection(water_l);
 		}
 	}
 	

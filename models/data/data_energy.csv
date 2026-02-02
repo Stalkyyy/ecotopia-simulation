@@ -1,5 +1,5 @@
-source,capacity_per_installation_kwh,land_per_installation_m2,water_per_kwh_l,emissions_per_kwh
-nuclear,4.15e8,2.5e6,2.0,12.0
-solar,1.0e6,1.0e6,0.1,40.0
-wind,2.2e6,2.5e5,0.004,12.0
-hydro,1.7e9,1.0e6,1.0,10.0
+source,capacity_per_installation_kwh,land_per_installation_m2,lifetime_y,construction_duration_y,maintainance_duration,water_per_kwh_l,total_water_input_per_kwh_l,emissions_per_kwh
+nuclear,4.15e8,2.5e6,50.0,10.0,20.0,2.0,200.0,12.0
+solar,1.0e6,1.0e6,30.0,0.8,0.3,0.1,0.1,40.0
+wind,2.2e6,2.5e5,30.0,0.8,0.3,0.004,0.004,12.0
+hydro,1.7e9,1.0e6,60.0,10.0,5.0,40.0,5040.0,10.0

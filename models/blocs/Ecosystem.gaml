@@ -156,7 +156,7 @@ species ecosystem parent:bloc {
     }
     
     
-    action tick(list<human> pop) {
+    action tick(list<human> pop, list<mini_ville> cities) {
     	do update_wildlife_population();
     	do update_time_and_season();
         do regenerate_resources();
@@ -294,8 +294,6 @@ species ecosystem parent:bloc {
         water_stock_l <- min(water_stock_l + water_l, water_max_stock_l);
         received_water <- received_water + water_l;
     }
-	
-	
     
     action collect_last_tick_data{
         if(cycle > 0){
