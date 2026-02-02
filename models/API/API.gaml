@@ -7,6 +7,7 @@
 
 model API
 import "../blocs/Ecosystem.gaml"
+import "../blocs/MiniVille.gaml"
 
 /*
  * Species used to represent a bloc.
@@ -23,7 +24,8 @@ species bloc{
 	action setup virtual:true;
 	
 	/* Execute the next tick */
-	action tick(list<human> pop) virtual:true;
+	action tick(list<human> pop, list<mini_ville> cities) virtual:true;
+	action tick(list<human> pop, list<mini_ville> cities) virtual:true;
 	
 	/* Returns the labels of the resources used by this bloc for production (inputs) */
 	action get_input_resources_labels virtual:true type:list<string>;
@@ -41,7 +43,7 @@ species bloc{
 species production_agent{
 	
 	/* Produce the given resources in the requested quantities. Return true in case of success. */
-	action produce(map<string, float> demand) virtual:true type:map<string, unknown>;
+	action produce(string bloc_name, map<string, float> demand) virtual:true type:map<string, unknown>;
 	
 	/* Returns all the resources used for the production this tick */
 	action get_tick_inputs_used virtual:true type: map<string, float>;
@@ -56,9 +58,16 @@ species production_agent{
 	action set_supplier(string product, bloc bloc_agent) virtual:true; 
 	
 	/* Send the ges emissions from producer to the ecosystem Bloc */
-	action send_ges_to_ecosystem(float ges) {
+	action send_ges_to_ecosystem(string bloc_name, float ges) {
 		ask ecosystem {
-			do receive_ges_emissions(ges);
+			do receive_ges_emissions(bloc_name, ges);
+		}
+	}
+	
+	/* Reinject water withdrawn but not consumed back into the ecosystem water stock */
+	action reinject_water_to_ecosystem(float water_l) {
+		ask ecosystem {
+			do receive_water_reinjection(water_l);
 		}
 	}
 }
@@ -78,9 +87,9 @@ species consumption_agent{
 	action get_tick_consumption virtual:true type: map<string, float>;
 	
 	/* Send the ges emissions from producer to the ecosystem Bloc */
-	action send_ges_to_ecosystem(float ges) {
+	action send_ges_to_ecosystem(string bloc_name, float ges) {
 		ask ecosystem {
-			do receive_ges_emissions(ges);
+			do receive_ges_emissions(bloc_name, ges);
 		}
 	}
 }
@@ -175,11 +184,13 @@ species coordinator{
 	reflex new_tick when: started{
 
 		list<human> pop <- get_all_instances(human);	
+		list<mini_ville> cities <- (mini_ville as list<mini_ville>);
+		write "coordinator: mini_villes=" + length(cities);
 
 		loop bloc_name over: scheduling{ // move to next tick for all blocs, following the defined scheduling
 			if bloc_name in registered_blocs.keys{
 				ask registered_blocs[bloc_name]{
-					do tick(pop);
+					do tick(pop, cities);
 				}
 			}else{
 				write "warning : bloc "+bloc_name+" not found !";
@@ -245,6 +256,7 @@ species city {
 		draw circle(2.0#px) color: color ;
 	}
 }
+
 
 
 
