@@ -969,31 +969,18 @@ species energy parent:bloc {
 			float water_consumption_per_kwh <- energy_cfg[source_name]["water_per_kwh_l"];
 			
 			float water_needed_total <- theoretical_kwh * water_withdrawal_per_kwh;
-			float water_to_ask <- water_needed_total;
-			float water_asked_per_loop <- water_needed_total * 0.10; // Every 10%
-			float water_withdrawn <- 0.0;
-			if (water_to_ask > 0 and "L water" in external_producers.keys){
-				loop while: water_to_ask > 0 {
-					float water_chunk <- min(water_asked_per_loop, water_to_ask);
-					map<string, unknown> info <- external_producers["L water"].producer.produce("energy", ["L water"::water_chunk]);
-					bool water_ok <- bool(info["ok"]);
-					if (water_ok) {
-						water_to_ask <- water_to_ask - water_chunk;
-						water_withdrawn <- water_withdrawn + water_chunk;
-					} else {
-						break;
-					}
-				}
-			}
+			map<string, unknown> info <- external_producers["L water"].producer.produce("energy", ["L water"::water_needed_total]);
 			
-			// Effective energy production is limited by actually withdrawn water
+			bool water_ok <- bool(info["ok"]);
+			float water_withdrawn <- float(info["transmitted_water"]);
+			
 			float actual_alloc_kwh <- 0.0;
-			if (water_withdrawal_per_kwh > 0.0) {
-				actual_alloc_kwh <- min(theoretical_kwh, water_withdrawn / water_withdrawal_per_kwh);
-			} else {
+			if (water_ok) {
 				actual_alloc_kwh <- theoretical_kwh;
+			} else {
+				actual_alloc_kwh <- min(theoretical_kwh, water_withdrawn / water_withdrawal_per_kwh);
 			}
-			
+						
 			// Fix computation error due to floats (eg. if the request is almost fulfilled by an epsilonesque delta, it's actually fulfilled)
 			float alloc_delta <- theoretical_kwh - actual_alloc_kwh;
 			if (alloc_delta >= 0.0 and alloc_delta <= max(1e-3, theoretical_kwh * 1e-10)) {
