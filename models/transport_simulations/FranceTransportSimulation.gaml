@@ -54,6 +54,10 @@ global {
         // Linear interpolation: y = y0 + (y1 - y0) * fraction
         return monthly_ratios[index_a] + (monthly_ratios[index_b] - monthly_ratios[index_a]) * fraction;
     }
+    float get_work_probability_for_day(int day) {
+	    float p_leisure <- get_probability_for_day(day);
+	    return (max_ratio - p_leisure);
+	}
 
 	// ----------
 	//    INIT
@@ -127,7 +131,10 @@ global {
     	km_usage["train"] <- 0.0;
     	vehicles_needed["train"] <- 0;
     	
-    	ask transport_link { // loop over all links
+    	list<transport_link> all_segments <- transport_link + leisure_link; // arcs + local
+    	
+    	
+    	ask all_segments { // loop over all links
     		if (daily_passengers > 0) {
     			int daily_capacity_per_train <- train_capacity * num_rides_per_day;
     			int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
@@ -136,6 +143,8 @@ global {
     			daily_passengers <- 0.0;
     		}
     	}
+    	ask leisure_link { do die; }
+    	
     	total_km_accumulated <- total_km_accumulated + km_usage["train"];
         if (km_usage["train"] > peak_km_day) { peak_km_day <- km_usage["train"]; }
         if (vehicles_needed["train"] > max_trains_needed) { max_trains_needed <- vehicles_needed["train"]; }
@@ -185,8 +194,16 @@ species water_source { aspect base { draw shape color: #blue border: #blue; } }
 species trip skills: [moving] {
 	string type;
 	region_node destination;
+	point nature_target;
 	int duration;
 }
+
+species leisure_link parent: transport_link {
+    aspect base {
+        draw shape color: #green;
+    }
+}
+
 
 species citizen {
 	region_node home_region;
@@ -197,31 +214,51 @@ species citizen {
 	int remaining_days <- 0;
 	
 	init {
-		//home_region <- one_of(region_node);
 		home_region <- region_node[rnd_choice(region_node collect each.population)];
 		location <- home_region.location;
 		if debug_write {write "Home region: " + home_region.name;}
 		do plan_yearly_travel;
 	}
 	
+	point get_nature_location(region_node start_node, bool short) {
+        float max_dist <- short ? 100#km : 500#km;
+        point candidate <- nil;
+        loop i from: 1 to: 50 {
+            if (flip(0.5)) {
+                forest f <- one_of(forest);
+                if (f != nil) { candidate <- any_location_in(f.shape); }
+            } else {
+                mountain m <- one_of(mountain);
+                if (m != nil) { candidate <- any_location_in(m.shape); }
+            }
+            if (candidate != nil and (candidate distance_to start_node.location <= max_dist)) {
+                return candidate;
+            }
+        }
+        return any_location_in(circle(max_dist) at_location start_node.location);
+    }
+	
+	
 	action plan_yearly_travel {
 		// Work trips: ~1.1 / year, on average 1.2 days long
 		int num_professional_trips <- poisson(1.1);
-		loop times: num_professional_trips {
-			loop i from: 1 to: 50 {
-				int work_day <- rnd(0, 365);
-				if (travel_plan[work_day] = nil) {
-					create trip {
-						type <- "work";
-						destination <- one_of (region_node - myself.home_region);
-						// random duration with mean 1.2: mostly 1 day, sometimes 2
-                		duration <- flip(0.2) ? 2 : 1;
-						myself.travel_plan[work_day] <- self;
-					}
-					break;
-				}
-			}
-		}
+		int work_trips_created <- 0;
+		loop while: work_trips_created < num_professional_trips {
+	        int candidate_day <- rnd(0, 364);
+	        float p_work <- world.get_work_probability_for_day(candidate_day);
+	        if (rnd(0.0, max_ratio) <= p_work) {
+	            if (travel_plan[candidate_day] = nil) {
+	                create trip {
+	                    type <- "work";
+	                    destination <- one_of(region_node - myself.home_region);
+	                    duration <- flip(0.2) ? 2 : 1;
+	                    myself.travel_plan[candidate_day] <- self;
+	                }
+	                work_trips_created <- work_trips_created + 1;
+	            }
+	        }
+	        if (cycle > 1000) { break; } 
+	    }
 		if debug_write {write "[Work] " + num_professional_trips + "x";}
 		
 		// Misc trips: 1 / month (instead of /week of CDC), on average 5.2 days long
@@ -248,21 +285,18 @@ species citizen {
 		
 		// Leisure trips: 0.5 / week (half of them are on scale 3)
 		int num_leisure_trips <- poisson(26);
-		loop times: num_leisure_trips {
-			loop i from: 1 to: 500 {
-				int leisure_day <- rnd(0, 365);
-				if (travel_plan[leisure_day] = nil) {
-					create trip {
-						type <- "leisure";
-					    //destination <- one_of(region_node - myself.home_region); // We suppose it's on scale 1.
-					    destination <- (region_node - myself.home_region) closest_to(myself) ;
-						duration <- 1;
-						myself.travel_plan[leisure_day] <- self;
-					}
-					break;
-				}
-			}
-		}
+        loop times: num_leisure_trips {
+            int leisure_day <- rnd(0, 364);
+            if (travel_plan[leisure_day] = nil) {
+                create trip {
+                    type <- "leisure";
+                    nature_target <- myself.get_nature_location(myself.home_region, true);
+                    destination <- region_node closest_to nature_target;
+                    duration <- 2;
+                    myself.travel_plan[leisure_day] <- self;
+                }
+            }
+        }
 	}
 	
 	reflex manage_travel {
@@ -271,10 +305,9 @@ species citizen {
             active_trip <- travel_plan[cycle];
             remaining_days <- active_trip.duration;
             activity <- active_trip.type;
-            location <- active_trip.destination.location;
+            location <- (activity = "leisure") ? active_trip.nature_target : active_trip.destination.location;
         	if debug_write {write "Day " + cycle + ", travelling to " + active_trip.destination.name;}
             
-            // Register infrastructure usage on departure
             do execute_trip(home_region, active_trip.destination);
             
             if debug_write { write "Starting " + activity + " trip to " + active_trip.destination.name + " for " + remaining_days + " days"; }
@@ -298,15 +331,21 @@ species citizen {
     }
 	
 	action execute_trip(region_node origin, region_node destination) {
-		if (origin != destination) {
-			path travel_path <- path_between(transport_network, origin, destination);
-			if (travel_path != nil) {
-				list<transport_link> used_segments <- list<transport_link> (travel_path.edges);
-				ask used_segments {
-					daily_passengers <- daily_passengers + 1;
-				}
-			}
-		}
+		if (activity = "leisure" and active_trip.nature_target != nil) {
+            // Create a temporary link for this specific nature spot
+            create leisure_link {
+                start_node <- origin;
+                shape <- line([origin.location, myself.active_trip.nature_target]);
+                daily_passengers <- 1.0;
+            }
+        } else if (origin != destination) {
+            path travel_path <- path_between(transport_network, origin, destination);
+            if (travel_path != nil) {
+                ask list<transport_link>(travel_path.edges) {
+                    daily_passengers <- daily_passengers + 1;
+                }
+            }
+        }
 	}
 	aspect base {
 		if debug_write{
@@ -333,9 +372,10 @@ experiment france_simulation type: gui {
 		}
 		display charts refresh: every(1#cycles) type: java2D {
 			chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} y_log_scale: true {
-				data "At home" value: citizen count (each.activity = "local") color: #green;
+				data "At home" value: citizen count (each.activity = "local") color: rgb(155, 155, 155);
 				data "Work Trip" value: citizen count (each.activity = "work") color: #red;
 				data "Misc Trip" value: citizen count (each.activity = "misc") color: #blue;
+				data "Leisure" value: citizen count (each.activity = "leisure") color: #green;
 			}
 			chart "Cumulative km usage / day" type: series size: {0.5, 0.5} position: {0, 0.5} y_log_scale: false {
 				data "Train" value: km_usage["train"] color: #blue;
