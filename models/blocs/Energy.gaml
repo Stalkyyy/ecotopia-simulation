@@ -109,6 +109,13 @@ global {
 	map<string, float> tick_pop_consumption_E <- [];
 	map<string, float> tick_losses_E <- [];
 	
+	// Data
+	map<string, float> energy_asked_by_bloc <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
+	map<string, float> energy_asked_by_bloc_tick <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
+
+	map<string, float> energy_used_by_bloc <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
+	map<string, float> energy_used_by_bloc_tick <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
+	
 	// Aggregated capacity indicators (kWh)
 	float tick_total_installed_capacity_kwh <- 0.0;      // total capacity of all sites (operational + construction + maintenance)
 	float tick_total_available_capacity_kwh <- 0.0;     // capacity from operational sites only
@@ -250,6 +257,9 @@ species energy parent:bloc {
 	    	ask energy_producer{ // prepare next tick on producer side
 	    		do reset_tick_counters;
 	    	}
+	    	
+	    	energy_used_by_bloc_tick <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
+	    	energy_asked_by_bloc_tick <- ["agriculture"::0.0, "ecosystem"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
 		//}
 	}
 	
@@ -315,7 +325,7 @@ species energy parent:bloc {
     	ask energy_consumer{ // produce the required quantities
     		ask energy_producer{
     			loop c over: myself.consumed.keys{
-		    		do produce("energy", [c::myself.consumed[c]]);
+		    		do produce("population", [c::myself.consumed[c]]);
 		    	}
 		    } 
     	}
@@ -499,6 +509,9 @@ species energy parent:bloc {
 				total_energy_demanded <- demand["kWh energy"];
 			}
 			
+			energy_asked_by_bloc[bloc_name] <- energy_asked_by_bloc[bloc_name] + total_energy_demanded;
+			energy_asked_by_bloc_tick[bloc_name] <- energy_asked_by_bloc_tick[bloc_name] + total_energy_demanded;
+			
 			float gross_energy_demanded <- total_energy_demanded;
 			if (enable_energy_stochasticity and network_losses_rate > 0.0) {
 				gross_energy_demanded <- total_energy_demanded / (1.0 - network_losses_rate);
@@ -534,6 +547,9 @@ species energy parent:bloc {
 			if (transmitted_kwh + 1e-6 < total_energy_demanded) {
 				ok <- false;
 			}
+			
+			energy_used_by_bloc[bloc_name] <- energy_used_by_bloc[bloc_name] + transmitted_kwh;
+			energy_used_by_bloc_tick[bloc_name] <- energy_used_by_bloc_tick[bloc_name] + transmitted_kwh;
 			
 			map<string, unknown> prod_info <- [
             	"ok"::ok,
@@ -1241,16 +1257,26 @@ experiment run_energy type: gui {
 			    data "Population direct consumption (kWh)" value: tick_pop_consumption_E["kWh energy"];
 			}
 			
-			chart "Demand multiplier" type: series size: {0.20, 0.20} position: {0.20, 0.60} {
-			    data "Demand multiplier" value: current_demand_multiplier;
+			chart "Energy Demand by blocs (kWh)" type: series size: {0.20, 0.20} position: {0.20, 0.60} y_log_scale: true {
+			    data "Agriculture" value: energy_asked_by_bloc_tick["agriculture"];
+				data "Ecosystème" value: energy_asked_by_bloc_tick["ecosystem"];
+				data "Transport" value: energy_asked_by_bloc_tick["transport"];
+				data "Urbanisme" value: energy_asked_by_bloc_tick["urbanism"];
+				// data "Population" value: energy_used_by_bloc_tick["population"];									
 			}
 			
-			chart "Network losses (kWh)" type: series size: {0.20, 0.20} position: {0.40, 0.60} y_log_scale: true {
-			    data "Losses (kWh)" value: tick_losses_E["kWh energy"];
+			chart "Energy Demand by blocs (share)" type: histogram size: {0.20, 0.20} position: {0.40, 0.60} {
+			    data "Agriculture" value: energy_asked_by_bloc_tick["agriculture"] color:#red;
+			    data "Ecosystème" value: energy_asked_by_bloc_tick["ecosystem"] color:#orange;
+			    data "Transport" value: energy_asked_by_bloc_tick["transport"] color:#green;
+			    data "Urbanisme" value: energy_asked_by_bloc_tick["urbanism"] color:#blue;
 			}
 			
-			chart "Hydro availability" type: series size: {0.20, 0.20} position: {0.60, 0.60} {
-			    data "Availability" value: availability_factor_by_source["hydro"];
+			chart "Energy Transmitted by blocs (kWh)" type: series size: {0.20, 0.20} position: {0.60, 0.60} y_log_scale: true {
+			    data "Agriculture" value: energy_used_by_bloc_tick["agriculture"];
+				data "Ecosystème" value: energy_used_by_bloc_tick["ecosystem"];
+				data "Transport" value: energy_used_by_bloc_tick["transport"];
+				data "Urbanisme" value: energy_used_by_bloc_tick["urbanism"];
 			}
 			
 			chart "Remaining capacity per tick (kWh)" type: series size: {0.20, 0.20} position: {0.80, 0.60} y_log_scale: true {
@@ -1411,16 +1437,26 @@ experiment run_energy type: gui {
 			    data "Population direct consumption (kWh)" value: tick_pop_consumption_E["kWh energy"];
 			}
 			
-			chart "Demand multiplier" type: series size: {0.20, 0.20} position: {0.20, 0.60} {
-			    data "Demand multiplier" value: current_demand_multiplier;
+			chart "Energy Demand by blocs (kWh)" type: series size: {0.20, 0.20} position: {0.20, 0.60} {
+			    data "Agriculture" value: energy_asked_by_bloc_tick["agriculture"];
+				data "Ecosystème" value: energy_asked_by_bloc_tick["ecosystem"];
+				data "Transport" value: energy_asked_by_bloc_tick["transport"];
+				data "Urbanisme" value: energy_asked_by_bloc_tick["urbanism"];
+				// data "Population" value: energy_used_by_bloc_tick["population"];									
 			}
 			
-			chart "Network losses (kWh)" type: series size: {0.20, 0.20} position: {0.40, 0.60} {
-			    data "Losses (kWh)" value: tick_losses_E["kWh energy"];
+			chart "Energy Demand by blocs (share)" type: histogram size: {0.20, 0.20} position: {0.40, 0.60} {
+			    data "Agriculture" value: energy_asked_by_bloc_tick["agriculture"] color:#red;
+			    data "Ecosystème" value: energy_asked_by_bloc_tick["ecosystem"] color:#orange;
+			    data "Transport" value: energy_asked_by_bloc_tick["transport"] color:#green;
+			    data "Urbanisme" value: energy_asked_by_bloc_tick["urbanism"] color:#blue;
 			}
 			
-			chart "Hydro availability" type: series size: {0.20, 0.20} position: {0.60, 0.60} {
-			    data "Availability" value: availability_factor_by_source["hydro"];
+			chart "Energy Transmitted by blocs (kWh)" type: series size: {0.20, 0.20} position: {0.60, 0.60} {
+			    data "Agriculture" value: energy_used_by_bloc_tick["agriculture"];
+				data "Ecosystème" value: energy_used_by_bloc_tick["ecosystem"];
+				data "Transport" value: energy_used_by_bloc_tick["transport"];
+				data "Urbanisme" value: energy_used_by_bloc_tick["urbanism"];
 			}
 			
 			chart "Remaining capacity per tick (kWh)" type: series size: {0.20, 0.20} position: {0.80, 0.60} {
