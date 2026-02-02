@@ -27,6 +27,7 @@ global {
 	file shape_file_forests <- file("../includes/shapefiles/forests_france_light.shp");
 	file shape_rivers_lakes <- file("../includes/shapefiles/rivers_france_light.shp");
 	file shape_mountains <- file("../includes/shapefiles/mountains_france_1300m.shp");
+	file shape_file_regions <- file("../includes/shapefiles/regions_france.shp");
 	geometry shape <- envelope(shape_file_bounds);
 
 	init {
@@ -37,6 +38,7 @@ global {
 			create forest from: shape_file_forests;
 			create water_source from: shape_rivers_lakes;
 			create city from: shape_file_cities;
+			create region from: shape_file_regions;
 		}
 
 		// instanciate the blocs (E, A and R blocs here):
@@ -67,6 +69,7 @@ experiment display_gis type: gui {
 	output {
 		display country_map type: java2D {
 			species fronteers aspect: base;
+			species region aspect: base;
 			species mountain aspect: base transparency: 0.15;
 			species forest aspect: base transparency: 0.15;
 			species water_source aspect: base;
