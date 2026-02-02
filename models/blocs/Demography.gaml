@@ -1,7 +1,6 @@
 /**
 * Name: Demography bloc (MOSIMA)
-* Authors: Maël Franceschetti, Cédric Herpson, Jean-Daniel Kant
-* Mail: firstname.lastname@lip6.fr
+* Authors: Ege Eken
 */
 
 model Demography
@@ -77,12 +76,49 @@ global{
 	list<float> seasonal_death_coeffs <- [1.08, 1.069, 1.04, 1.0, 0.96, 0.931, 0.92, 0.931, 0.96, 1.0, 1.04, 1.069];
 	float coeff_death_seasonal <- 1.0;
 	
+	// Minivilles selected directly for display in charts (avoids changing random pick each step)
+	list<mini_ville> monitored_minivilles <- [];
+
+	geometry shape <- square(2000#m);
+	
 	init{  
-		// a security added to avoid launching an experiment without the other blocs
-		if (length(coordinator) = 0){
-			error "Coordinator agent not found. Ensure you launched the experiment from the Main model";
-			// If you see this error when trying to run an experiment, this means the coordinator agent does not exist.
-			// Ensure you launched the experiment from the Main model (and not from the bloc model containing the experiment).
+		write "[Demography] Global Init. Coordinator: " + length(coordinator) + " | MVs: " + length(mini_ville);
+
+		// Robust Initialization Check (Standalone Mode):
+		// If running without Main/Urbanism (e.g. run_demography experiment), we need to create dummy MiniVilles
+		if (length(coordinator) = 0 and empty(mini_ville)){
+			write "[Demography] No MiniVilles found (Standalone Mode). Initializing dependencies...";
+			
+			// FIX: Manually initialize MiniVille global variables just in case
+			if (area_per_unit_default = 0.0) { area_per_unit_default <- 70.0; }
+			if (total_area_per_ville = 0.0) { total_area_per_ville <- 2e6; }
+			if (buildable_ratio = 0.0) { buildable_ratio <- 0.4; }
+			if (initial_fill_ratio = 0.0) { initial_fill_ratio <- 0.2; }
+			
+			write "[Demography] Creating 550 dummy mini_villes per configuration...";
+			create mini_ville number: 550 with: [location::{0,0,0}]; 
+		}
+		
+		// 2. Create and setup the residents agent (Manager) if it doesn't exist
+		if (empty(residents)) {
+			write "[Demography] Creating residents agent...";
+			create residents number: 1 {
+				do setup;
+			}
+		}
+	}
+	
+	// Reflex to drive the simulation when there is no coordinator (Main model) to call us
+	reflex standalone_driver when: empty(coordinator) {
+		// Recovery: Ensure MiniVilles exist (fix for missing initialization)
+		if (empty(mini_ville)) {
+			write "[Demography] RECOVERY: Creating 550 MiniVilles in reflex loop.";
+			create mini_ville number: 550 with: [location::{0,0,0}]; 
+		}
+		
+		ask residents {
+			// Pass all individuals and global mini_villes to the tick function
+			do tick(list(individual), list(mini_ville));
 		}
 	}
 	
@@ -121,7 +157,7 @@ species residents parent:bloc{
 	}
 	
 	/* updates the population every tick */
-	action tick(list<human> pop, list<mini_ville> cities){
+	action tick(list<human> pop, list<mini_ville> cities){ // Updated signature
 		do population_activity(pop);
 		do collect_last_tick_data;
 		//map<string, float> demand <- ["kg_meat"::10.0, "kg_vegetables"::10.0, "L water"::10.0, "total_housing_capacity"::10.0];
@@ -147,6 +183,14 @@ species residents parent:bloc{
 			do update_food_demand;
 			do update_water_demand;
 			do update_housing_demand; // Enabled housing demand update
+			
+			// Initialize monitored minivilles for display (pick 5 random ones once)
+			if (empty(monitored_minivilles) and not empty(cities)) {
+				monitored_minivilles <- (length(cities) >= 5) ? (5 among cities) : cities;
+			}
+			
+			do update_miniville_populations(cities);
+			do debug_miniville_populations(cities);
 		}
 		// write "tick" + last_consumed;
 	}
@@ -192,7 +236,7 @@ species residents parent:bloc{
         ask residents_consumer{ // produce the required quantities
             ask residents_producer{
                 loop c over: myself.consumed.keys{
-                    do produce([c::myself.consumed[c]]);
+                    do produce("population", [c::myself.consumed[c]]);
                 }
             } 
         }
@@ -203,6 +247,47 @@ species residents parent:bloc{
             do set_supplier(product, bloc_agent);
         }
     }
+    
+    action update_miniville_populations(list<mini_ville> available_cities) {
+    	// Reset counts for the passed cities
+		ask available_cities {
+			population_count <- 0.0;
+		}
+		
+		// Map individuals to cities
+		ask individual {
+			// Fallback: Assign home if missing or if home is not in the current available list
+			// Note: We check 'available_cities contains home' to ensure we only use valid cities provided by Urbanism
+			if (home = nil or not(available_cities contains home)) {
+				// Try to find a city with space
+				list<mini_ville> candidates <- available_cities where (each.population_count < each.housing_capacity);
+				if (!empty(candidates)) {
+					home <- one_of(candidates);
+				} else {
+					// Fallback: Overcrowding (pick any city)
+					if (!empty(available_cities)) { home <- one_of(available_cities); }
+				}
+			}
+
+			if (home != nil) {
+				home.population_count <- home.population_count + pop_per_ind;
+			}
+		}
+    }
+
+	action debug_miniville_populations(list<mini_ville> cities) {
+		if (cycle mod 12 = 0) { // once a year
+			int total_mapped_pop <- 0; 
+			ask cities {
+				total_mapped_pop <- total_mapped_pop + int(population_count);
+				// Debug log every 100 mini_villes
+				if (index mod 100 = 0) {
+					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
+				}
+			}
+			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * pop_per_ind);
+		}
+	}
     
     action update_food_demand {
 		float target_intake <- 2000.0;
@@ -629,7 +714,7 @@ species residents parent:bloc{
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		map<string, unknown> produce(map<string, float> demand){
+		map<string, unknown> produce(string bloc_name, map<string, float> demand){
 			bool ok <- true;
 			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
 			loop r over: demand.keys{
@@ -640,7 +725,7 @@ species residents parent:bloc{
 					// 	 ok <- false;
 					// }
 					
-					map<string, unknown> info <- external_producers[r].producer.produce([r::qty]);
+					map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
 					if not bool(info["ok"]) {
 						ok <- false;
 					}
@@ -748,6 +833,7 @@ species residents parent:bloc{
 	int ticks_before_birthday <- 0;
 	int delay_next_child <- 0;
 	int child <- 0;
+	mini_ville home <- nil;
 	
 	int ticks_counter <- 0;
 	
@@ -927,6 +1013,24 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 			}
 			
 		}
+
+		display MiniVille_Distribution_6 {
+			chart "MiniVille Population Sample" type: histogram background: #white {
+				data "MV A" value: (length(monitored_minivilles) > 0) ? monitored_minivilles[0].population_count : 0 color: #blue;
+				data "MV B" value: (length(monitored_minivilles) > 1) ? monitored_minivilles[1].population_count : 0 color: #red;
+				data "MV C" value: (length(monitored_minivilles) > 2) ? monitored_minivilles[2].population_count : 0 color: #green;
+				data "MV D" value: (length(monitored_minivilles) > 3) ? monitored_minivilles[3].population_count : 0 color: #purple;
+				data "MV E" value: (length(monitored_minivilles) > 4) ? monitored_minivilles[4].population_count : 0 color: #orange;
+			}
+		}
+		
+		/* 
+		display MiniVille_Distribution type: java2D { 
+			graphics "World_Background" {
+				draw shape color: #white border: #red;
+			}
+			species mini_ville aspect: population_map;
+		}*/
 	}
 }
 

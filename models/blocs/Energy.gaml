@@ -39,6 +39,15 @@ global {
 	float demand_multiplier_min <- 0.70;
 	float demand_multiplier_max <- 1.30;
 	
+	// Shortage monitoring & build planning
+	int demand_ma_window_months <- 12; 			// moving average window for demand forecast
+	float shortage_alert_ratio <- 0.05; 		// threshold for "red" shortage (e.g., 5%)
+	float shortage_buffer_threshold <- 0.20; 	// trigger builds when (remaining + pipeline) / demand < threshold
+	int max_builds_per_tick_per_source <- 50; 	// cap to avoid explosive construction
+	int fast_build_horizon_months <- 6; 		// horizon for fast techs (solar/wind)
+	int long_build_horizon_months <- 36; 		// horizon for long techs (nuclear/hydro)
+	float fast_build_share <- 0.85; 			// share of buffer gap allocated to fast build even without deficit
+	
 	// Source availability (outages + seasonality)
 	float outage_prob_monthly <- 0.01;
 	float outage_capacity_loss_min <- 0.05;
@@ -103,6 +112,9 @@ global {
 	float tick_total_installed_capacity_kwh <- 0.0;      // total capacity of all sites (operational + construction + maintenance)
 	float tick_total_available_capacity_kwh <- 0.0;     // capacity from operational sites only
 	float tick_total_remaining_capacity_kwh <- 0.0;     // remaining producible kWh this tick after production
+	float tick_pipeline_capacity_kwh <- 0.0;            // capacity in construction/maintenance within horizon
+	float tick_buffer_ratio <- 0.0;                     // (remaining + pipeline) / demand
+	float tick_deficit_now_kwh <- 0.0;                  // current net deficit (demand - net production)
 	 
 	// Per source tick counters (initialized from energy_cfg keys)
 	map<string, map<string, float>> tick_sub_production_E <- init_tick_source_map();
@@ -221,7 +233,14 @@ species energy parent:bloc {
 			ask producer { do snapshot_sub_tick_data; }
 	    	tick_resources_used_E <- producer.get_tick_inputs_used(); 		// collect resources used
 	    	tick_production_E <- producer.get_tick_outputs_produced(); 		// collect production
-	    	tick_emissions_E <- producer.get_tick_emissions(); 				// collect emissions	    	
+	    	tick_emissions_E <- producer.get_tick_emissions(); 				// collect emissions
+	    	ask producer {
+	    		do plan_construction_after_tick(
+	    			tick_pop_consumption_E["kWh energy"],
+	    			tick_production_E["kWh energy"] - tick_losses_E["kWh energy"],
+	    			tick_total_remaining_capacity_kwh
+	    		);
+	    	}
 	    	
 	    	ask energy_consumer{ // prepare next tick on consumer side
 	    		do reset_tick_counters;
@@ -295,7 +314,7 @@ species energy parent:bloc {
     	ask energy_consumer{ // produce the required quantities
     		ask energy_producer{
     			loop c over: myself.consumed.keys{
-		    		do produce([c::myself.consumed[c]]);
+		    		do produce("energy", [c::myself.consumed[c]]);
 		    	}
 		    } 
     	}
@@ -336,6 +355,80 @@ species energy parent:bloc {
 					do reset_tick_counters;
 				}
 			}
+		}
+		
+		float get_pipeline_capacity_within(int horizon_months){
+			float total <- 0.0;
+			loop sp over: sub_producers {
+				total <- total + sp.get_pipeline_capacity_within(horizon_months);
+			}
+			return total;
+		}
+		
+		float get_pipeline_capacity_for_sources(list<string> sources, int horizon_months){
+			float total <- 0.0;
+			loop s over: sources {
+				if (s in sub_producers.keys) {
+					total <- total + sub_producers[s].get_pipeline_capacity_within(horizon_months);
+				}
+			}
+			return total;
+		}
+		
+		action build_for_kwh(string source, float needed_kwh){
+			if (needed_kwh <= 0.0) {
+				return;
+			}
+			float cap_per_install <- energy_cfg[source]["capacity_per_installation_kwh"];
+			int n_needed <- int(ceil(needed_kwh / cap_per_install));
+			int n_to_build <- min(n_needed, max_builds_per_tick_per_source);
+			if (n_to_build <= 0) {
+				return;
+			}
+			if (source in sub_producers.keys) {
+				ask sub_producers[source] {
+					do try_build_installations(n_to_build * cap_per_install);
+				}
+			}
+		}
+		
+		// Triggered at end of tick: build when buffer (remaining + pipeline) is below threshold
+		action plan_construction_after_tick(float demand_kwh, float net_production_kwh, float remaining_kwh){
+			if (demand_kwh <= 0.0) {
+				return;
+			}
+			
+			// Separate pipeline for fast vs long techs
+			float pipeline_fast <- get_pipeline_capacity_for_sources(["solar", "wind"], fast_build_horizon_months);
+			float pipeline_long <- get_pipeline_capacity_for_sources(["nuclear", "hydro"], long_build_horizon_months);
+			tick_pipeline_capacity_kwh <- pipeline_fast + pipeline_long;
+			tick_deficit_now_kwh <- max(0.0, demand_kwh - net_production_kwh);
+			tick_buffer_ratio <- (remaining_kwh + tick_pipeline_capacity_kwh) / demand_kwh;
+			
+			if (tick_buffer_ratio >= shortage_buffer_threshold) {
+				return;
+			}
+			
+			// Compute buffer gap and allocate a share to fast build even without deficit
+			float buffer_gap_kwh <- max(0.0, (shortage_buffer_threshold * demand_kwh) - (remaining_kwh + tick_pipeline_capacity_kwh));
+			float fast_need <- max(tick_deficit_now_kwh, buffer_gap_kwh * fast_build_share);
+			if (fast_need > 0.0) {
+				float fast_wind <- fast_need * 0.5;
+				float fast_solar <- fast_need - fast_wind;
+				do build_for_kwh("wind", fast_wind);
+				do build_for_kwh("solar", fast_solar);
+			}
+			
+			// Long-term response: build according to target mix
+			float long_need <- buffer_gap_kwh;
+			if (long_need <= 0.0) {
+				return;
+			}
+			
+			do build_for_kwh("nuclear", long_need * nuclear_mix);
+			do build_for_kwh("solar", long_need * solar_mix);
+			do build_for_kwh("wind", long_need * wind_mix);
+			do build_for_kwh("hydro", long_need * hydro_mix);
 		}
 		
 		action not_sub_reset_tick {
@@ -399,7 +492,7 @@ species energy parent:bloc {
 		/**
 		 * Orchestrate national energy production across all sources according to energy mix ratios
 		 */
-		map<string, unknown> produce(map<string, float> demand) {
+		map<string, unknown> produce(string bloc_name, map<string, float> demand) {
 			float total_energy_demanded <- 0.0;
 			if ("kWh energy" in demand.keys) {
 				total_energy_demanded <- demand["kWh energy"];
@@ -425,7 +518,7 @@ species energy parent:bloc {
 				string source_name <- sub_producer.get_source_name();		
 				float source_energy_requested <- gross_energy_demanded * mix_ratios[source_name];
 				ask sub_producer {
-					map<string, unknown> info <- produce(["kWh energy"::source_energy_requested]);
+					map<string, unknown> info <- produce("energy", ["kWh energy"::source_energy_requested]);
 					if ("allocated_kwh" in info.keys) {
 						total_allocated_gross_kwh <- total_allocated_gross_kwh + float(info["allocated_kwh"]);
 					}
@@ -562,6 +655,28 @@ species energy parent:bloc {
 		float get_total_installed_capacity_kwh {
 			int nb_sites <- length(sites);
 			return nb_sites * energy_cfg[source_name]["capacity_per_installation_kwh"];
+		}
+		
+		float get_pipeline_capacity_within(int horizon_months){
+			if (horizon_months <= 0) {
+				return 0.0;
+			}
+			int nb_pipeline <- 0;
+			loop s over: sites {
+				string st <- string(s["status"]);
+				if (st = "construction") {
+					int rem_c <- int(s["construction_remaining"]);
+					if (rem_c <= horizon_months) {
+						nb_pipeline <- nb_pipeline + 1;
+					}
+				} else if (st = "maintenance") {
+					int rem_m <- int(s["maintenance_remaining"]);
+					if (rem_m <= horizon_months) {
+						nb_pipeline <- nb_pipeline + 1;
+					}
+				}
+			}
+			return nb_pipeline * energy_cfg[source_name]["capacity_per_installation_kwh"];
 		}
 		
 		float get_remaining_capacity_kwh_this_tick {
@@ -735,13 +850,13 @@ species energy parent:bloc {
 			
 			// Request construction/maintenance resources (water & cotton)
 			if (site_phase_water > 0.0 and "L water" in external_producers.keys) {
-				map<string, unknown> info_w <- external_producers["L water"].producer.produce(["L water"::site_phase_water]);
+				map<string, unknown> info_w <- external_producers["L water"].producer.produce("energy", ["L water"::site_phase_water]);
 				if (bool(info_w["ok"])) {
 					tick_resources_used["L water"] <- tick_resources_used["L water"] + site_phase_water;
 				}
 			}
 			if (site_phase_cotton > 0.0 and "kg_cotton" in external_producers.keys) {
-				map<string, unknown> info_c <- external_producers["kg_cotton"].producer.produce(["kg_cotton"::site_phase_cotton]);
+				map<string, unknown> info_c <- external_producers["kg_cotton"].producer.produce("energy", ["kg_cotton"::site_phase_cotton]);
 				if (bool(info_c["ok"])) {
 					tick_resources_used["kg_cotton"] <- tick_resources_used["kg_cotton"] + site_phase_cotton;
 				}
@@ -795,10 +910,17 @@ species energy parent:bloc {
 			if (installations_needed <= 0) {
 				return;
 			}
+			// Ensure per-site parameters are initialized even if no initial sites were created
+			if (land_per_site <= 0.0) {
+				land_per_site <- energy_cfg[source_name]["land_per_installation_m2"];
+				lifetime_ticks_max_site <- int(energy_cfg[source_name]["lifetime_y"] * nb_ticks_per_year);
+				construction_ticks_max_site <- int(energy_cfg[source_name]["construction_duration_y"] * nb_ticks_per_year);
+				maintenance_ticks_max_site <- int(energy_cfg[source_name]["maintainance_duration"] * nb_ticks_per_year);
+			}
 			if ("m² land" in external_producers.keys) {
 				int built <- 0;
 				loop i from:1 to:installations_needed {
-					map<string, unknown> info <- external_producers["m² land"].producer.produce(["m² land"::land_per_site]);
+					map<string, unknown> info <- external_producers["m² land"].producer.produce("energy", ["m² land"::land_per_site]);
 					if (bool(info["ok"])) {
 						built <- built + 1;
 					} else {
@@ -835,19 +957,12 @@ species energy parent:bloc {
 		
 		/**
 		 * Allocate available production capacity and resources to fulfill an energy demand request.
-		 * - If there is not enough capacity left this tick, we try to build an installation.
 		 * - For now, to not fight with the API file, we request water in 10% increments from Ecosystem Bloc, in case it has not enough water to share with us.
 		 */
 		map<string, float> allocate_resources(float requested_kwh) {
 			map<string, float> result <- ["allocated_kwh"::0.0, "shortfall_kwh"::0.0];
 			
-			if(requested_kwh > remaining_capacity_kwh_this_tick){
-				if (requested_kwh > base_capacity_kwh_this_tick) {
-					do try_build_installations(requested_kwh - base_capacity_kwh_this_tick);
-					base_capacity_kwh_this_tick <- get_total_capacity_kwh();
-					remaining_capacity_kwh_this_tick <- base_capacity_kwh_this_tick * availability_factor_by_source[source_name];
-				}
-			}
+			// No auto-build here; construction is handled by the planning step
 			
 			float theoretical_kwh <- min(requested_kwh, remaining_capacity_kwh_this_tick);
 			float water_withdrawal_per_kwh <- energy_cfg[source_name]["total_water_input_per_kwh_l"];
@@ -860,7 +975,7 @@ species energy parent:bloc {
 			if (water_to_ask > 0 and "L water" in external_producers.keys){
 				loop while: water_to_ask > 0 {
 					float water_chunk <- min(water_asked_per_loop, water_to_ask);
-					map<string, unknown> info <- external_producers["L water"].producer.produce(["L water"::water_chunk]);
+					map<string, unknown> info <- external_producers["L water"].producer.produce("energy", ["L water"::water_chunk]);
 					bool water_ok <- bool(info["ok"]);
 					if (water_ok) {
 						water_to_ask <- water_to_ask - water_chunk;
@@ -886,7 +1001,7 @@ species energy parent:bloc {
 			}
 			
 			float emissions_g <- actual_alloc_kwh * energy_cfg[source_name]["emissions_per_kwh"];
-			do send_ges_to_ecosystem(emissions_g);
+			do send_ges_to_ecosystem("energy", emissions_g);
 			
 			// Water accounting: part is consumed, the rest is reinjected
 			float water_consumed <- actual_alloc_kwh * water_consumption_per_kwh;
@@ -911,7 +1026,7 @@ species energy parent:bloc {
 		/**
 		 * Execute energy production for this source to meet a specified demand. 
 		 */
-		map<string, unknown> produce(map<string, float> demand) {
+		map<string, unknown> produce(string bloc_name, map<string, float> demand) {
 			if("kWh energy" in demand.keys) {
 				float req <- demand["kWh energy"];
 				if (req <= 0) {
@@ -1002,10 +1117,17 @@ species energy parent:bloc {
  * Shows breakdown by source (nuclear, solar, wind, hydro)
  */
 experiment run_energy type: gui {		
+	parameter "Initial total capacity (kWh per tick)" category:"Initialization" var:initial_total_capacity_kwh;
 	parameter "Nuclear mix" category:"Mix ratio" var:nuclear_mix min:0.0 max:1.0;
 	parameter "Solar mix" category:"Mix ratio" var:solar_mix min:0.0 max:1.0;
 	parameter "Wind mix" category:"Mix ratio" var:wind_mix min:0.0 max:1.0;
 	parameter "Hydro mix" category:"Mix ratio" var:hydro_mix min:0.0 max:1.0;
+	
+	parameter "Build buffer threshold" category:"Construction" var:shortage_buffer_threshold min:0.0 max:0.50;
+	parameter "Max builds per tick per source" category:"Construction" var:max_builds_per_tick_per_source min:0 max:1000;
+	parameter "Fast build horizon (months)" category:"Construction" var:fast_build_horizon_months min:1 max:24;
+	parameter "Long build horizon (months)" category:"Construction" var:long_build_horizon_months min:12 max:240;
+	parameter "Fast build share" category:"Construction" var:fast_build_share min:0.0 max:1.0;
 	
 	parameter "Enable stochasticity" category:"Stochasticity" var:enable_energy_stochasticity;
 	parameter "Network losses rate" category:"Stochasticity" var:network_losses_rate min:0.0 max:0.20;
@@ -1041,6 +1163,10 @@ experiment run_energy type: gui {
 		    	data "Total water withdrawn (L)" value: tick_resources_used_E["L water"];
 			}
 			
+			chart "Total cotton usage (kg)" type: series size: {0.20, 0.20} position: {0.80, 0} {
+				data "Total cotton (kg)" value: tick_resources_used_E["kg_cotton"];
+			}
+			
 			/* =-=-=-=-=-=
 			 * ROW 2
 			 =-=-=-=-=-=-= */
@@ -1073,6 +1199,13 @@ experiment run_energy type: gui {
 				data "Hydro" value: tick_sub_resources_used_E["hydro"]["L water"];
 			}
 			
+			chart "Cotton usage by source (kg)" type: series size: {0.20, 0.20} position: {0.80, 0.20} {
+				data "Nuclear" value: tick_sub_resources_used_E["nuclear"]["kg_cotton"];
+				data "Solar" value: tick_sub_resources_used_E["solar"]["kg_cotton"];
+				data "Wind" value: tick_sub_resources_used_E["wind"]["kg_cotton"];
+				data "Hydro" value: tick_sub_resources_used_E["hydro"]["kg_cotton"];
+			}
+			
 			/* =-=-=-=-=-=
 			 * ROW 3
 			 =-=-=-=-=-=-= */
@@ -1101,6 +1234,13 @@ experiment run_energy type: gui {
 				data "Unavailable" value: tick_sub_nb_unavailable_sites["hydro"];
 			}
 			
+			chart "Energy mix (share)" type: series size: {0.20, 0.20} position: {0.80, 0.40} {
+				data "Nuclear" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["nuclear"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0;
+				data "Solar" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["solar"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0;
+				data "Wind" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["wind"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0;
+				data "Hydro" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["hydro"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0;
+			}
+			
 			/* =-=-=-=-=-=
 			 * ROW 4
 			 =-=-=-=-=-=-= */
@@ -1121,6 +1261,10 @@ experiment run_energy type: gui {
 			    data "Availability" value: availability_factor_by_source["hydro"];
 			}
 			
+			chart "Remaining capacity per tick (kWh)" type: series size: {0.20, 0.20} position: {0.80, 0.60} {
+				data "Remaining capacity" value: tick_total_remaining_capacity_kwh;
+			}
+			
 			/* =-=-=-=-=-=
 			 * ROW 5
 			 =-=-=-=-=-=-= */
@@ -1130,8 +1274,32 @@ experiment run_energy type: gui {
 				data "Available capacity" value: tick_total_available_capacity_kwh;
 			}
 			
-			chart "Remaining capacity per tick (kWh)" type: series size: {0.20, 0.20} position: {0.20, 0.80} {
-				data "Remaining capacity" value: tick_total_remaining_capacity_kwh;
+			chart "Live - Energy mix (share)" type: histogram size: {0.20,0.20} position: {0.20, 0.80} {
+			    data "Nuclear" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["nuclear"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0 color:#red;
+			    data "Solar" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["solar"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0 color:#orange;
+			    data "Wind" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["wind"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0 color:#green;
+			    data "Hydro" value: (tick_production_E["kWh energy"] > 0) ? (tick_sub_production_E["hydro"]["kWh energy"] / tick_production_E["kWh energy"]) : 0.0 color:#blue;
+			}
+			
+			chart "Live - Land usage mix (share)" type: histogram size: {0.20,0.20} position: {0.40, 0.80} {
+			    data "Nuclear" value: (tick_resources_used_E["m² land"] > 0) ? (tick_sub_resources_used_E["nuclear"]["m² land"] / tick_resources_used_E["m² land"]) : 0.0 color:#red;
+			    data "Solar" value: (tick_resources_used_E["m² land"] > 0) ? (tick_sub_resources_used_E["solar"]["m² land"] / tick_resources_used_E["m² land"]) : 0.0 color:#orange;
+			    data "Wind" value: (tick_resources_used_E["m² land"] > 0) ? (tick_sub_resources_used_E["wind"]["m² land"] / tick_resources_used_E["m² land"]) : 0.0 color:#green;
+				data "Hydro" value: (tick_resources_used_E["m² land"] > 0) ? (tick_sub_resources_used_E["hydro"]["m² land"] / tick_resources_used_E["m² land"]) : 0.0 color:#blue;
+			}
+
+			chart "Live - Water withdrawn mix (share)" type: histogram size: {0.20,0.20} position: {0.60, 0.80} {
+			    data "Nuclear" value: (tick_resources_used_E["L water"] > 0) ? (tick_sub_resources_used_E["nuclear"]["L water"] / tick_resources_used_E["L water"]) : 0.0 color:#red;
+			    data "Solar" value: (tick_resources_used_E["L water"] > 0) ? (tick_sub_resources_used_E["solar"]["L water"] / tick_resources_used_E["L water"]) : 0.0 color:#orange;
+			    data "Wind" value: (tick_resources_used_E["L water"] > 0) ? (tick_sub_resources_used_E["wind"]["L water"] / tick_resources_used_E["L water"]) : 0.0 color:#green;
+			    data "Hydro" value: (tick_resources_used_E["L water"] > 0) ? (tick_sub_resources_used_E["hydro"]["L water"] / tick_resources_used_E["L water"]) : 0.0 color:#blue;
+			}
+
+			chart "Live - Cotton usage mix (share)" type: histogram size: {0.20,0.20} position: {0.80, 0.80} {
+			    data "Nuclear" value: (tick_resources_used_E["kg_cotton"] > 0) ? (tick_sub_resources_used_E["nuclear"]["kg_cotton"] / tick_resources_used_E["kg_cotton"]) : 0.0 color:#red;
+			    data "Solar" value: (tick_resources_used_E["kg_cotton"] > 0) ? (tick_sub_resources_used_E["solar"]["kg_cotton"] / tick_resources_used_E["kg_cotton"]) : 0.0 color:#orange;
+			    data "Wind" value: (tick_resources_used_E["kg_cotton"] > 0) ? (tick_sub_resources_used_E["wind"]["kg_cotton"] / tick_resources_used_E["kg_cotton"]) : 0.0 color:#green;
+			    data "Hydro" value: (tick_resources_used_E["kg_cotton"] > 0) ? (tick_sub_resources_used_E["hydro"]["kg_cotton"] / tick_resources_used_E["kg_cotton"]) : 0.0 color:#blue;
 			}
 	    }
 	}
