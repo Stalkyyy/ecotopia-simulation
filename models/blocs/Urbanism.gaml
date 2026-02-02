@@ -1,23 +1,12 @@
 /**
 * Name: Urbanism bloc
-* Authors: team A MOSIMA
-*
-* Notes (2026-01):
-* - Mini-ville variables (housing units, housing_capacity, buildable_area, used_buildable_area) are treated as
-*   *real* aggregate quantities at the scale of the model territory (i.e., do NOT multiply them again by pop_per_ind).
-* - Population is represented by a sample of human agents; Demography uses pop_per_ind to scale demands.
-*   In Urbanism we therefore compare population_real (= nb_humans * pop_per_ind) against housing_capacity_real.
+* Authors: Doruk OZGENC - Baran ACIKEL 
 */
 
 model Urbanism
 
 import "../API/API.gaml"
 
-/*
- * Macroscale urbanism bloc.
- * Tracks aggregated housing stock (wood vs modular), capacity, land-use and resource needs.
- * No explicit building agents in v1: housing is aggregated inside mini-villes.
- */
 global{
 	// Demography scaling (must match Demography.gaml pop_per_ind)
 	float nb_humans_per_agent <- 19500.0;
@@ -44,8 +33,8 @@ global{
 	float target_occupancy_rate <- 0.95;       // aim for ~95% occupancy
 	float occupancy_hysteresis <- 0.01;         // avoid flip-flop around the target
 	float occupancy_rate <- 0.0;             // population_real / capacity_effective
-	float build_fraction_of_deficit <- 0.25;     // build only a fraction of the deficit per tick (tune)
-	int max_units_per_tick <- 7000;            // CAP in *real* housing units / tick (tune later)
+	float build_fraction_of_deficit <- 0.25;     // build only a fraction of the deficit per tick
+	int max_units_per_tick <- 2200;            // CAP in *real* housing units
 	int min_units_per_tick <- 0;
 
 	// Construction pipeline timing (interpretation: 1 tick = 1 month)
@@ -98,7 +87,7 @@ global{
 
 
 // --- Decay (housing lifecycle v0) controls (annual rate, applied every N cycles) ---
-float decay_rate_annual_param <- 0.0002;     // e.g. 0.002 = 0.2% per year
+float decay_rate_annual_param <- 0.002;     // e.g. 0.002 = 0.2% per year
 int decay_period_cycles_param <- 12;        // if 1 tick = 1 month, 12 => yearly decay
 float decay_land_recovery_fraction_param <- 1.0; // 1.0 = fully recover land on decay
 bool debug_decay_log_param <- false;
@@ -503,7 +492,7 @@ return demand;
 			modular_housing_units <- modular_housing_units + modular_feasible;
 
 			used_buildable_area <- used_buildable_area + area_used_now;
-			// Report actual land consumption back to the Urbanism bloc (outside the ask scope)
+			// Report actual land consumption back to the Urbanism bloc
 			tick_resources_used["m² land"] <- tick_resources_used["m² land"] + area_used_now;
 			remaining_buildable_area <- max(0.0, buildable_area - used_buildable_area);
 
@@ -564,7 +553,7 @@ species urban_producer parent: production_agent{
 	}
 
 	
-	// Dry-run feasibility check (no side effects). Does NOT require API.gaml changes.
+	// Dry-run feasibility check 
 	map<string, unknown> can_produce(map<string, float> demand){
 		bool ok <- true;
 
