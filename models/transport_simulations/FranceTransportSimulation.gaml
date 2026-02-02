@@ -37,6 +37,11 @@ global {
     
     float daily_km_regional_val <- 0.0;
     float daily_km_local_val <- 0.0;
+    
+    int daily_trains_regional_val <- 0;
+    int daily_trains_local_val <- 0;
+    int max_trains_regional <- 0;
+    int max_trains_local <- 0;
 	
 	map<string, point> region_coords <- [];
     map<string, int> region_populations <- [];
@@ -138,7 +143,8 @@ global {
     reflex calculate_railway_infrastructure_usage {
     	float daily_km_reg <- 0.0;
         float daily_km_loc <- 0.0;
-        int daily_trains <- 0;
+        int daily_trains_reg <- 0;
+        int daily_trains_loc <- 0;
         
         int daily_capacity_per_train <- train_capacity * num_rides_per_day;
         
@@ -146,7 +152,7 @@ global {
         ask transport_link {
             if (daily_passengers > 0) {
                 int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
-                daily_trains <- daily_trains + trains_on_segment;
+                daily_trains_reg <- daily_trains_reg + trains_on_segment;
                 daily_km_reg <- daily_km_reg + (trains_on_segment * (shape.perimeter / 1000.0));
                 daily_passengers <- 0.0;
             }
@@ -156,15 +162,18 @@ global {
         ask leisure_link {
             if (daily_passengers > 0) {
                 int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
-                daily_trains <- daily_trains + trains_on_segment;
+                daily_trains_loc <- daily_trains_loc + trains_on_segment;
                 daily_km_loc <- daily_km_loc + (trains_on_segment * (shape.perimeter / 1000.0));
             }
         }
         
         daily_km_regional_val <- daily_km_reg;
     	daily_km_local_val <- daily_km_loc;
+    	daily_trains_regional_val <- daily_trains_reg;
+    	daily_trains_local_val <- daily_trains_loc;
+    	
     	km_usage["train"] <- daily_km_reg + daily_km_loc;
-    	vehicles_needed["train"] <- daily_trains;
+    	vehicles_needed["train"] <- daily_trains_reg + daily_trains_loc;
     	
     	total_km_regional <- total_km_regional + daily_km_reg;
         total_km_local <- total_km_local + daily_km_loc;
@@ -173,7 +182,10 @@ global {
         if (daily_km_reg > peak_km_regional) { peak_km_regional <- daily_km_reg; }
         if (daily_km_loc > peak_km_local) { peak_km_local <- daily_km_loc; }
         if (km_usage["train"] > peak_km_day) { peak_km_day <- km_usage["train"]; }
-        if (daily_trains > max_trains_needed) { max_trains_needed <- daily_trains; }
+        
+        if (daily_trains_reg > max_trains_regional) { max_trains_regional <- daily_trains_reg; }
+        if (daily_trains_loc > max_trains_local) { max_trains_local <- daily_trains_loc; }
+        if (vehicles_needed["train"] > max_trains_needed) { max_trains_needed <- vehicles_needed["train"]; }
 
         ask leisure_link { do die; }
     }
@@ -189,7 +201,9 @@ global {
 		save ["total_km_month_scale2", int(total_km_local / 12)] to: csv_str rewrite: false;
 		save ["peak_km_day_scale1", peak_km_regional] to: csv_str rewrite: false;
 		save ["peak_km_day_scale2", peak_km_local] to: csv_str rewrite: false;
-		save ["max_trains_required", max_trains_needed] to: csv_str rewrite: false;
+		save ["max_trains_required_total", max_trains_needed] to: csv_str rewrite: false;
+		save ["max_trains_required_scale1", max_trains_regional] to: csv_str rewrite: false;
+		save ["max_trains_required_scale2", max_trains_local] to: csv_str rewrite: false;
 		write "Saved results to " + csv_str;
         do pause;
     }
@@ -452,7 +466,9 @@ experiment france_simulation type: gui {
 		        data "Local (Scale 2)" value: daily_km_local_val color: #green;
 		    }
 			chart "Vehicles needed" type: series size: {0.5, 0.5} position: {0.5, 0.5} {
-				data "Trains" value: vehicles_needed["train"] color: #blue;
+				data "Total Trains" value: vehicles_needed["train"] color: #black;
+				data "Regional (Scale 1)" value: daily_trains_regional_val color: #blue;
+				data "Local (Scale 2)" value: daily_trains_local_val color: #green;
 			}
 		}
 	}
