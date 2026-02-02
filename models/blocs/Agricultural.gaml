@@ -178,8 +178,7 @@ species agricultural parent:bloc{
 		consumer <- first(consumers);
 	}
 	
-	action tick(list<human> pop) {
-				
+	action tick(list<human> pop, list<mini_ville> cities) {
 		do collect_last_tick_data();
 		
 		//do population_activity(pop);
