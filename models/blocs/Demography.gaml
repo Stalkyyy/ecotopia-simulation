@@ -279,8 +279,8 @@ species residents parent:bloc{
 		if (cycle mod 12 = 0) { // once a year
 			int total_mapped_pop <- 0; 
 			ask cities {
-				total_mapped_pop <- total_mapped_pop + int(population_count);
 				// Debug log every 100 mini_villes
+				total_mapped_pop <- total_mapped_pop + int(population_count);
 				if (index mod 100 = 0) {
 					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
 				}

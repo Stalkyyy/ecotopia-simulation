@@ -97,7 +97,7 @@ global{
 
 
 // --- Decay (housing lifecycle v0) controls (annual rate, applied every N cycles) ---
-float decay_rate_annual_param <- 0.002;     // e.g. 0.002 = 0.2% per year
+float decay_rate_annual_param <- 0.0002;     // e.g. 0.002 = 0.2% per year
 int decay_period_cycles_param <- 12;        // if 1 tick = 1 month, 12 => yearly decay
 float decay_land_recovery_fraction_param <- 1.0; // 1.0 = fully recover land on decay
 bool debug_decay_log_param <- false;

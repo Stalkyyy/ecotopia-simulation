@@ -12,7 +12,7 @@ model MiniVille
 
 global{
 	// Mini-ville initialization (v1: fixed number, no creation/destruction)
-	int mini_ville_count <- 2000;
+	int mini_ville_count <- 50;
 	float total_area_per_ville <- 2e6; // m2 per mini-ville
 	float buildable_ratio <- 0.4;
 	float green_ratio <- 0.4;
