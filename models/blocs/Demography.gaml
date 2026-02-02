@@ -833,6 +833,7 @@ species residents parent:bloc{
 	int ticks_before_birthday <- 0;
 	int delay_next_child <- 0;
 	int child <- 0;
+	mini_ville home <- nil;
 	
 	int ticks_counter <- 0;
 	
