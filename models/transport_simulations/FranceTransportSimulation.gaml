@@ -59,14 +59,23 @@ global {
     float max_ratio <- max(monthly_ratios);
 
     float get_probability_for_day(int day) {
-        float year_progress <- day / 365 * 11;
-        int index_a <- int(floor(year_progress));
-        int index_b <- (index_a + 1) mod 12;
-        float fraction <- year_progress - index_a;
-        
-        // Linear interpolation: y = y0 + (y1 - y0) * fraction
-        return monthly_ratios[index_a] + (monthly_ratios[index_b] - monthly_ratios[index_a]) * fraction;
-    }
+	    float year_progress <- (day / 365.0) * 11;
+	    int i <- int(floor(year_progress));
+	    // might be overkill but spline
+	    int p0 <- (i - 1 + 12) mod 12;
+	    int p1 <- i;
+	    int p2 <- (i + 1) mod 12;
+	    int p3 <- (i + 2) mod 12;
+	    float t <- year_progress - i;
+	
+	    float val <- 0.5 * (
+	        (2 * monthly_ratios[p1]) +
+	        (-monthly_ratios[p0] + monthly_ratios[p2]) * t +
+	        (2 * monthly_ratios[p0] - 5 * monthly_ratios[p1] + 4 * monthly_ratios[p2] - monthly_ratios[p3]) * t^2 +
+	        (-monthly_ratios[p0] + 3 * monthly_ratios[p1] - 3 * monthly_ratios[p2] + monthly_ratios[p3]) * t^3
+	    );
+	    return val;
+	}
     float get_work_probability_for_day(int day) {
 	    float p_leisure <- get_probability_for_day(day);
 	    return (max_ratio - p_leisure);
@@ -136,12 +145,19 @@ global {
 	    //		}
 	    //	}
 	    //}
-	    create citizen number: population_size;
+	    
+	    //create citizen number: population_size;
+	    int batch_size <- int(population_size / 100);
+        loop i from: 1 to: 100 {
+            create citizen number: batch_size;
+            write "Progress: " + i + "% (" + (i * batch_size) + " agents created)";
+        }
 	    
 	}
 	
 	// Un train fait 10 aller-retours par jour (justifications sur rapport ou csv)
 	int num_rides_per_day <- 10;
+	int regional_multiplier <- 4; // 4x more rails in france
     reflex calculate_railway_infrastructure_usage {
     	float daily_km_reg <- 0.0;
         float daily_km_loc <- 0.0;
@@ -163,7 +179,7 @@ global {
         // Scale 2
         ask leisure_link {
             if (daily_passengers > 0) {
-                int trains_on_segment <- ceil((daily_passengers * scaling_factor) / daily_capacity_per_train);
+                int trains_on_segment <- ceil((daily_passengers * scaling_factor * regional_multiplier) / daily_capacity_per_train);
                 daily_trains_loc <- daily_trains_loc + trains_on_segment;
                 daily_km_loc <- daily_km_loc + (trains_on_segment * (shape.perimeter / 1000.0));
             }
@@ -271,7 +287,10 @@ species citizen {
 	}
 	
 	point get_nature_location(region_node start_node, bool short) {
-        float max_dist <- short ? 100#km : 500#km;
+        float max_dist <- 500#km;
+        if short {
+        	max_dist <- flip(0.2) ? 50#km : 10#km;
+        }
         point candidate <- nil;
         loop i from: 1 to: 50 {
             if (flip(0.5)) {
@@ -360,20 +379,33 @@ species citizen {
         }
 		if debug_write {write "[Misc] " + num_misc_trips + "x\nDays: " + travel_plan;}
 		
-		// Leisure trips: 0.5 / week (half of them are on scale 3)
-		int num_leisure_trips <- poisson(106);
-        loop times: num_leisure_trips {
-            int leisure_day <- rnd(0, 364);
-            if (travel_plan[leisure_day] = nil) {
-                create trip {
-                    type <- "leisure";
-                    nature_target <- myself.get_nature_location(myself.home_region, true);
-                    destination <- region_node closest_to nature_target;
-                    duration <- 1;
-                    myself.travel_plan[leisure_day] <- self;
-                }
-            }
-        }
+		// Leisure trips: 1 per day base freq
+		// Ignore 75% (because they're scale 3) -> 1 trip every 4 days
+		loop day from: 0 to: 364 {
+		    if (flip(0.25)) {
+		        if (travel_plan[day] = nil) {
+		            
+		            // 80% scale 2, 20% Local
+		            if (flip(0.8)) {
+		                create trip {
+		                    type <- "leisure";
+		                    destination <- one_of(region_node - myself.home_region);
+		                    nature_target <- nil;
+		                    duration <- 1;
+		                    myself.travel_plan[day] <- self;
+		                }
+		            } else {
+		                create trip {
+		                    type <- "leisure";
+		                    nature_target <- myself.get_nature_location(myself.home_region, true);
+		                    destination <- region_node closest_to nature_target;
+		                    duration <- 1;
+		                    myself.travel_plan[day] <- self;
+		                }
+		            }
+		        }
+		    }
+		}
 	}
 	
 	reflex manage_travel {
@@ -410,11 +442,13 @@ species citizen {
 	action execute_trip(region_node origin, region_node destination) {
 		//if (activity = "leisure" and active_trip.nature_target != nil) {
 		if (active_trip.nature_target != nil) {
-			// temp link
-            create leisure_link {
-                // using home_region -> nature_target to ensure identical dist for departure and return
-                shape <- line([myself.home_region.location, myself.active_trip.nature_target]);
-                daily_passengers <- 1.0;
+			float dist_to_nature <- home_region.location distance_to active_trip.nature_target;
+			if (dist_to_nature > 2#km) { // 2KM for bigger than mini-ville + outskirt diameter scale, else we don't take train
+	            create leisure_link {
+	                // using home_region -> nature_target to ensure identical dist for departure and return
+	                shape <- line([myself.home_region.location, myself.active_trip.nature_target]);
+	                daily_passengers <- 1.0;
+	            }
             }
         } else if (origin != destination) {
             path travel_path <- path_between(transport_network, origin, destination);
@@ -456,7 +490,7 @@ experiment france_simulation type: gui {
 			}
 		}
 		display charts refresh: every(1#cycles) type: java2D {
-			chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} y_log_scale: true {
+			chart "Population Activity Distribution" type: series size: {1.0, 0.5} position: {0, 0} y_log_scale: false {
 				data "At home" value: citizen count (each.activity = "local") color: rgb(155, 155, 155);
 				data "Work Trip" value: citizen count (each.activity = "work") color: #red;
 				data "Misc Trip" value: citizen count (each.activity = "misc") color: #blue;
