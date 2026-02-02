@@ -736,7 +736,7 @@ parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 	parameter "Scarcity enabled (debug)" var: debug_scarcity_enabled;
 	parameter "Scarcity multiplier (debug)" var: debug_scarcity_multiplier;
 	output {
-		display Urbanism_information {
+		display Urbanism_information type:2d{
 			chart "Capacity vs population" type: series size: {0.5,0.5} position: {0, 0} {
 				data "capacity (real, scaled)" value: capacity_real_scaled color: #blue;
 				data "capacity (sim built)" value: total_capacity color: #lightblue;
@@ -759,7 +759,7 @@ parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 		}
 
 		
-		display Urbanism_lifecycle {
+		display Urbanism_lifecycle type:2d{
 			chart "Net housing delta" type: series size: {0.5,0.5} position: {0, 0} {
 				data "net units (scaled)" value: float(net_units_tick) * alpha_mv color: #purple;
 				data "net capacity (scaled)" value: net_capacity_tick * alpha_mv color: #blue;
@@ -771,7 +771,7 @@ parameter "Use dynamic alpha scaling (debug)" var: use_dynamic_alpha;
 			}
 		}
 
-display Pipeline_debug {
+		display Pipeline_debug type:2d{
 			chart "Mini-ville states" type: series size: {1.0,0.5} position: {0, 0} {
 				data "idle" value: mini_ville count (each.construction_state = "idle");
 				data "waiting_resources" value: mini_ville count (each.construction_state = "waiting_resources");
@@ -803,12 +803,12 @@ display Pipeline_debug {
 		monitor "tick_capacity_demolished" value: demolished_capacity_tick;
 		monitor "tick_net_capacity" value: net_capacity_tick;
 
-		display MiniVille_state_map {
+		display MiniVille_state_map type:2d{
 			// Visualize construction pipeline spatially (colors: green=idle, orange=waiting, red=building)
 			species mini_ville aspect: construction_state_view;
 		}
 
-		display MiniVille_information {
+		display MiniVille_information type:2d{
 			chart "Mini-ville capacity" type: series size: {0.5,0.5} position: {0, 0} {
 				data "total_housing_capacity" value: sum(mini_ville collect each.housing_capacity) color: #purple;
 				data "total_units" value: sum(mini_ville collect (each.wood_housing_units + each.modular_housing_units)) color: #sienna;
