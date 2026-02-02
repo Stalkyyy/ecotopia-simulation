@@ -82,23 +82,24 @@ species mini_ville {
 		// initial quantity
 		// lifetime for each vehicle
 		// number of km used with this vehicle during a tick
+		// WE MULTIPLIED BY 4.35 to get per month instead of per week
 		"walk"::[
-			"km_per_tick_per_10k_person"::13173	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::63649	// value obtained from the Scale3 simulation 
 		],
 		"taxi"::[
-			"quantity"::78,	// value obtained from the Scale3 simulation
+			"quantity"::53,	// value obtained from the Scale3 simulation
 			"lifetime"::138,
-			"km_per_tick_per_10k_person"::2769	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::6977	// value obtained from the Scale3 simulation
 		],
 		"minibus"::[
-			"quantity"::38,	// value obtained from the Scale3 simulation
+			"quantity"::50,	// value obtained from the Scale3 simulation
 			"lifetime"::98,
-			"km_per_tick_per_10k_person"::5266	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::28988	// value obtained from the Scale3 simulation
 		],
 		"bicycle"::[
-			"quantity"::3036,	// value obtained from the Scale3 simulation
+			"quantity"::3425,	// value obtained from the Scale3 simulation
 			"lifetime"::84,
-			"km_per_tick_per_10k_person"::118445	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::431542	// value obtained from the Scale3 simulation
 		]
 	];
 	
