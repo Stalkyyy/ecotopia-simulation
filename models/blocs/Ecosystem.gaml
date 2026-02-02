@@ -461,12 +461,12 @@ experiment run_ecosystem type: gui {
              * ROW 1
              */
             // Water stock evolution
-            chart "Water stock (L)" type: series size: {0.25, 0.25} position: {0.0, 0.0} y_log_scale:true {
+            chart "Water stock (L)" type: series size: {0.25, 0.25} position: {0.0, 0.0} {
                 data "Stock" value: water_stock_l;
                 data "Max available" value: water_max_stock_l;
             }
             
-            chart "Water consumption by bloc per tick (L / month)" type: series size: {0.25, 0.25} position: {0.25, 0.0} y_log_scale:true {
+            chart "Water consumption by bloc per tick (L / month)" type: series size: {0.25, 0.25} position: {0.25, 0.0} {
 			    loop b over: water_used_by_bloc_tick.keys {
 			        data b value: water_used_by_bloc_tick[b];
 			    }
@@ -517,7 +517,7 @@ experiment run_ecosystem type: gui {
              * ROW 3
              */
             // GES stock and absorption : bugged kinda, not every execution show the correct thing
-            chart "GES balance (kg CO2e)" type: series size: {0.25, 0.25} position: {0.0, 0.40} {
+            chart "GES balance (kg CO2e)" type: series size: {0.25, 0.25} position: {0.0, 0.50} {
                 data "GES in atmosphere" value: ges_stock;
             }
             
