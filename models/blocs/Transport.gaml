@@ -45,14 +45,14 @@ global{
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
-			"quantity"::19310,	// from simulation at scale 1/2
+			"quantity"::43680,	// from simulation at scale 1/2
 			"capacity"::258, // (people)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0,
 			"lifetime"::324,
 			"emissions"::7200,
 			"creation_energy"::375000.0,
-			"plastic_weight"::73100,
+			"plastic_weight"::146200,
 			"distance_max_per_tick"::80000
 		],
 		"taxi"::[
@@ -956,12 +956,12 @@ experiment run_transport type: gui {
 			    	data c value: tick_production_T[c];
 			    }
 			}
-			chart "Transport ressources Penury" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
+			chart "Transport ressources shortage" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
 			    loop v over: (production_outputs_T) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
 			}
-			chart "Used ressources Penury" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
+			chart "Used ressources shortage" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
 			    loop v over: production_inputs_T {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
@@ -995,7 +995,7 @@ experiment run_transport type: gui {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
-			chart "Vehicles Penury" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
+			chart "Vehicles Shortage" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
