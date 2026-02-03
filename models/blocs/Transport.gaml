@@ -52,7 +52,7 @@ global{
 			"lifetime"::324,
 			"emissions"::7200,
 			"creation_energy"::375000.0,
-			"plastic_weight"::146200,
+			"plastic_weight"::73100,
 			"distance_max_per_tick"::80000
 		],
 		"taxi"::[
@@ -469,9 +469,9 @@ species transport parent:bloc{
 	// vvv CITY CODE vvv
     map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
 		// number of vehicles required for 10k people cities
-		"taxi"::78,		// value obtained from the Scale3 simulation
-		"minibus"::38,	// value obtained from the Scale3 simulation
-		"bicycle"::3036	// value obtained from the Scale3 simulation
+		"taxi"::53,		// value obtained from the Scale3 simulation
+		"minibus"::50,	// value obtained from the Scale3 simulation
+		"bicycle"::3425	// value obtained from the Scale3 simulation
 	];
 	
     
@@ -666,7 +666,8 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
-    int required_trains_per_tick_for_65m_citizens <- 19310;		// value from simulation at scale 1/2
+    int required_trains_per_tick_for_65m_citizens <- 43680;		// value from simulation at scale 1/2
+    // 19310  43680
     // the value above should be 43680 per the sim
     int train_km_per_tick_per_65m_person <- 53338799+7557975;		// value from simulation at scale 1/2
 

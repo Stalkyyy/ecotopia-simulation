@@ -76,17 +76,17 @@ species mini_ville {
 			"km_per_tick_per_10k_person"::63649	// value obtained from the Scale3 simulation
 		],
 		"taxi"::[
-			"quantity"::78,	// value obtained from the Scale3 simulation
+			"quantity"::51,	// value obtained from the Scale3 simulation
 			"lifetime"::138,
 			"km_per_tick_per_10k_person"::6982	// value obtained from the Scale3 simulation
 		],
 		"minibus"::[
-			"quantity"::38,	// value obtained from the Scale3 simulation
+			"quantity"::50,	// value obtained from the Scale3 simulation
 			"lifetime"::98,
 			"km_per_tick_per_10k_person"::28993	// value obtained from the Scale3 simulation
 		],
 		"bicycle"::[
-			"quantity"::3036,	// value obtained from the Scale3 simulation
+			"quantity"::3425,	// value obtained from the Scale3 simulation
 			"lifetime"::84,
 			"km_per_tick_per_10k_person"::431542	// value obtained from the Scale3 simulation
 		]
