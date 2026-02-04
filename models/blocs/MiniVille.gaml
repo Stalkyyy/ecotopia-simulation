@@ -23,6 +23,18 @@ global{
 
 	// Housing capacity per unit (shared baseline)
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_miniville <- [
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425,
+		"weekly_walk_km"::14632,
+		"weekly_taxi_km"::1605,
+		"weekly_minibus_km"::6665,
+		"weekly_bicycle_km"::99205
+	];
 }
 
 /**
@@ -73,22 +85,22 @@ species mini_ville {
 		// lifetime for each vehicle
 		// number of km used with this vehicle during a tick
 		"walk"::[
-			"km_per_tick_per_10k_person"::13173	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_walk_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"taxi"::[
-			"quantity"::78,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["taxis_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::138,
-			"km_per_tick_per_10k_person"::2769	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_taxi_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"minibus"::[
-			"quantity"::38,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["minibuses_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::98,
-			"km_per_tick_per_10k_person"::5266	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_minibus_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"bicycle"::[
-			"quantity"::3036,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["bicycles_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::84,
-			"km_per_tick_per_10k_person"::118445	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_bicycle_km"]*4.348	// value obtained from the Scale3 simulation
 		]
 	];
 	
@@ -102,8 +114,9 @@ species mini_ville {
 	
 	// function to setup the original amounts of vehicles of the mini_ville and their age
 	action setup_vehicles {
+		float pop_ratio <- 68250000 / 10000;
 		loop v over:vehicles{
-			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * pop_ratio);
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];
