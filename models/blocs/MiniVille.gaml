@@ -114,9 +114,12 @@ species mini_ville {
 	
 	// function to setup the original amounts of vehicles of the mini_ville and their age
 	action setup_vehicles {
-		float pop_ratio <- 68250000 / 10000;
+		// TODO remove when mini-ville is enough. Right now we only get 49 instead of the proposed 6500 or 6825.
+		// the 49 comes from Urbanism creating only where the GIS cities are, and not the rest.
+		float miniville_difference_multiplier <- 6500.0 / 49.0;
 		loop v over:vehicles{
-			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * pop_ratio);
+			write vehicle_data[v];
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * miniville_difference_multiplier);
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];

@@ -690,7 +690,6 @@ species transport parent:bloc{
 		int population <- length(pop) * nb_humans_per_agent;
 		float ratio_population_to_65m <- population / 68250000;
 		// check if we need to create more trains for the current population :
-		write "required: " + required_trains_per_tick_for_65m_citizens;
 		float trains_required_this_tick <- required_trains_per_tick_for_65m_citizens * ratio_population_to_65m;
 		
 		int additional_trains_needed <- int(ceil(trains_required_this_tick - number_of_vehicles_available[t]));
