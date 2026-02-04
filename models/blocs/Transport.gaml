@@ -15,6 +15,20 @@ import "../API/API.gaml"
 global{
 	float completion <- 1.0;
 	bool verbose_shortage <- false;
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_transport <- [
+		
+		// From FranceTransportSimulation: Scale 1 / 2
+		"trains_required"::50960,
+		"train_km_month_scale1"::53338799,
+		"train_km_month_scale2"::7557975,
+		
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425
+	];
 
 
 	/* Setup */
@@ -45,7 +59,7 @@ global{
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
-			"quantity"::43680,	// from simulation at scale 1/2
+			"quantity"::sim_csv_values_transport["trains_required"],	// from simulation at scale 1/2
 			"capacity"::258, // (people)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0,
@@ -469,9 +483,9 @@ species transport parent:bloc{
 	// vvv CITY CODE vvv
     map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
 		// number of vehicles required for 10k people cities
-		"taxi"::53,		// value obtained from the Scale3 simulation
-		"minibus"::50,	// value obtained from the Scale3 simulation
-		"bicycle"::3425	// value obtained from the Scale3 simulation
+		"taxi"::sim_csv_values_transport["taxis_required"],		// value obtained from the Scale3 simulation
+		"minibus"::sim_csv_values_transport["minibuses_required"],	// value obtained from the Scale3 simulation
+		"bicycle"::sim_csv_values_transport["bicycles_required"]	// value obtained from the Scale3 simulation
 	];
 	
     
@@ -666,10 +680,9 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
-    int required_trains_per_tick_for_65m_citizens <- 43680;		// value from simulation at scale 1/2
-    // 19310  43680
-    // the value above should be 43680 per the sim
-    int train_km_per_tick_per_65m_person <- 53338799+7557975;		// value from simulation at scale 1/2
+    int required_trains_per_tick_for_65m_citizens <- int(sim_csv_values_transport["trains_required"]);		// value from simulation at scale 1/2;
+    //int required_trains_per_tick_for_65m_citizens <- 50960;		// value from simulation at scale 1/2;
+    int train_km_per_tick_per_65m_person <- sim_csv_values_transport["train_km_month_scale1"]+sim_csv_values_transport["train_km_month_scale2"];		// value from simulation at scale 1/2
 
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()
@@ -677,6 +690,7 @@ species transport parent:bloc{
 		int population <- length(pop) * nb_humans_per_agent;
 		float ratio_population_to_65m <- population / 68250000;
 		// check if we need to create more trains for the current population :
+		write "required: " + required_trains_per_tick_for_65m_citizens;
 		float trains_required_this_tick <- required_trains_per_tick_for_65m_citizens * ratio_population_to_65m;
 		
 		int additional_trains_needed <- int(ceil(trains_required_this_tick - number_of_vehicles_available[t]));
