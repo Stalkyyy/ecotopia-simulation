@@ -1,5 +1,6 @@
 'parameter','value'
 parameter,value
+<<<<<<< HEAD
 peak_taxis_per_1k,13.0
 peak_bikes_per_1k,301.5
 peak_minibus_fleet_per_1k,3.6
@@ -8,4 +9,14 @@ total_km_walk,13087438.58891579
 total_km_bicycle,117418248.3431933
 total_km_mini_bus,5250416.692049036
 total_km_taxi,4486397.191026822
+=======
+peak_taxis_per_10k,53.0
+peak_bikes_per_10k,3425.0000000000005
+peak_minibus_fleet_per_10k,50.0
+peak_trains_fleet_per_10k,2.0
+total_km_walk,14632.200187838469
+total_km_bicycle,99205.03407417885
+total_km_mini_bus,6664.814658070402
+total_km_taxi,1604.7016636507894
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 total_km_train,0.0

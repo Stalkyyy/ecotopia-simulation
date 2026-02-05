@@ -17,6 +17,7 @@ global {
 	 
 	// Time scale (must stay consistent with Demography: 12 ticks = 1 year)
 	int nb_ticks_per_year <- 12;
+	float nb_humans_per_agent <- 19500.0;
 	
 	// Initial production capacity for initial infrastructure (= total energy consumption, all sources, France)
 	float initial_total_capacity_kwh <- 1.254e12 / nb_ticks_per_year;	
@@ -969,6 +970,7 @@ species energy parent:bloc {
 			float water_consumption_per_kwh <- energy_cfg[source_name]["water_per_kwh_l"];
 			
 			float water_needed_total <- theoretical_kwh * water_withdrawal_per_kwh;
+<<<<<<< HEAD
 			float water_to_ask <- water_needed_total;
 			float water_asked_per_loop <- water_needed_total * 0.10; // Every 10%
 			float water_withdrawn <- 0.0;
@@ -985,15 +987,20 @@ species energy parent:bloc {
 					}
 				}
 			}
+=======
+			map<string, unknown> info <- external_producers["L water"].producer.produce("energy", ["L water"::water_needed_total]);
 			
-			// Effective energy production is limited by actually withdrawn water
+			bool water_ok <- bool(info["ok"]);
+			float water_withdrawn <- float(info["transmitted_water"]);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
+			
 			float actual_alloc_kwh <- 0.0;
-			if (water_withdrawal_per_kwh > 0.0) {
-				actual_alloc_kwh <- min(theoretical_kwh, water_withdrawn / water_withdrawal_per_kwh);
-			} else {
+			if (water_ok) {
 				actual_alloc_kwh <- theoretical_kwh;
+			} else {
+				actual_alloc_kwh <- min(theoretical_kwh, water_withdrawn / water_withdrawal_per_kwh);
 			}
-			
+						
 			// Fix computation error due to floats (eg. if the request is almost fulfilled by an epsilonesque delta, it's actually fulfilled)
 			float alloc_delta <- theoretical_kwh - actual_alloc_kwh;
 			if (alloc_delta >= 0.0 and alloc_delta <= max(1e-3, theoretical_kwh * 1e-10)) {
@@ -1102,7 +1109,7 @@ species energy parent:bloc {
 			individual_kwh <- max(human_cfg["min_kwh_conso"], min(individual_kwh, human_cfg["max_kwh_conso"]));
 			
 			// Add to total consumption
-			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * human_cfg["humans_per_agent"];
+			consumed["kWh energy"] <- consumed["kWh energy"] + individual_kwh * nb_humans_per_agent;
 		}
 	}
 }

@@ -19,6 +19,10 @@ import "../API/API.gaml"
  * No explicit building agents in v1: housing is aggregated inside mini-villes.
  */
 global{
+	// Demography scaling (must match Demography.gaml pop_per_ind)
+	float nb_humans_per_agent <- 19500.0;
+	//int pop_per_ind <- 6700;
+	
 	/* Setup */
 	list<string> housing_types <- ["wood", "modular"];
 	float modular_surface_factor <- 1.15; // modular units use more surface than wood (multiplier)
@@ -80,9 +84,6 @@ global{
 	float pending_surface_total <- 0.0;   // sum of pending_surface in non-idle cities (m², simulated)
 	float pending_capacity_total <- 0.0;  // sum of pending capacity in non-idle cities (persons, simulated)
 
-	// Demography scaling (must match Demography.gaml pop_per_ind)
-	int pop_per_ind <- 6700;
-
 	// CDC scaling for charts: upscale capacity/land if simulated mini-villes represent constellations
 	int target_pop_per_miniville_real <- 10000;
 	int nb_minivilles_sim <- 1;
@@ -108,7 +109,7 @@ bool debug_decay_log_param <- false;
 
 	/* State (for charts/logging) */
 	int population_count <- 0;           // nb of human agents (sample)
-	float population_real <- 0.0;        // scaled population in real persons (nb_humans * pop_per_ind)
+	float population_real <- 0.0;        // scaled population in real persons (nb_humans * nb_humans_per_agent)
 	map<string, int> units <- copy(init_units);
 	map<string, float> tick_resources_used <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 	map<string, int> tick_constructions <- ["wood"::0, "modular"::0];
@@ -208,7 +209,7 @@ ask cities {
 		// Population (REAL) — Demography uses the same scaling
 		int nb_humans <- length(pop);
 		population_count <- nb_humans;
-		population_real <- nb_humans * pop_per_ind;
+		population_real <- nb_humans * nb_humans_per_agent;
 
 		// Completed units this tick = delta in built stock (construction commits happen inside mini-villes)
 		int current_wood_units <- units["wood"];
@@ -369,6 +370,7 @@ ask cities {
 		// Enforce per-tick cap on starts (prevents 'instant mass build' artifacts at scale)
 		if(builds_started_count_tick >= max_builds_started_per_tick){ return false; }
 
+<<<<<<< HEAD
 		// Dry-run feasibility check (no API changes): only if the producer is our urban_producer
 		urban_producer up <- urban_producer(producer);
 		if(up != nil){
@@ -382,6 +384,9 @@ ask cities {
 
 		map<string, unknown> info <- producer.produce("urbanism", c.pending_demand);
 		if(!bool(info["ok"])) { tick_commit_fails <- tick_commit_fails + 1; }
+=======
+		map<string, unknown> info <- producer.produce("urbanism", c.pending_demand);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		if(bool(info["ok"])) {
 			ask c { do start_build; }
 			builds_started_count_tick <- builds_started_count_tick + 1;
@@ -401,6 +406,7 @@ ask cities {
 		return (sum(housing_types collect capacity_per_unit[each]) / length(housing_types));
 	}
 
+<<<<<<< HEAD
 	
 	int compute_build_duration(int wood_units, int modular_units){
 		int total_units <- wood_units + modular_units;
@@ -411,6 +417,10 @@ ask cities {
 
 map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
 		// IMPORTANT: do NOT multiply again by pop_per_ind — these are already REAL units.
+=======
+	map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
+		// IMPORTANT: do NOT multiply again by nb_humans_per_agent — these are already REAL units.
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 
 		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units;
@@ -562,6 +572,7 @@ species urban_producer parent: production_agent{
 		return tick_emissions;
 	}
 
+<<<<<<< HEAD
 	
 	// Dry-run feasibility check (no side effects). Does NOT require API.gaml changes.
 	map<string, unknown> can_produce(map<string, float> demand){
@@ -618,6 +629,9 @@ species urban_producer parent: production_agent{
 		map<string, unknown> pre <- can_produce(demand);
 		if(!bool(pre["ok"])) { return ["ok"::false]; }
 
+=======
+	map<string, unknown> produce(string bloc_name, map<string, float> demand){
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		bool ok <- true;
 		list<string> processed <- [];
 
@@ -629,7 +643,11 @@ species urban_producer parent: production_agent{
 			if(r in demand.keys){
 				float qty <- demand[r];
 				if(external_producers.keys contains r){
+<<<<<<< HEAD
 					map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
+=======
+					map<string, unknown> info <- external_producers[r].producer.produce("urbanism", [r::qty]);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 					if not bool(info["ok"]) {
 						ok <- false;
 					} else {
@@ -651,7 +669,11 @@ species urban_producer parent: production_agent{
 			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
 			float qty <- demand[r];
 			if(external_producers.keys contains r){
+<<<<<<< HEAD
 				map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
+=======
+				map<string, unknown> info <- external_producers[r].producer.produce("urbanism", [r::qty]);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 				if not bool(info["ok"]) {
 					ok <- false;
 				} else {
@@ -703,7 +725,11 @@ species urban_producer parent: production_agent{
 					if(eco_bloc = nil){
 						ok <- false;
 					} else {
+<<<<<<< HEAD
 						map<string, unknown> info <- eco_bloc.producer.produce(bloc_name, eco_demand);
+=======
+						map<string, unknown> info <- eco_bloc.producer.produce("urbanism", eco_demand);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 						if not bool(info["ok"]) {
 							ok <- false;
 						} else {

@@ -33,6 +33,18 @@ bool debug_decay_log_default <- false;
 
 	// Housing capacity per unit (shared baseline)
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_miniville <- [
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425,
+		"weekly_walk_km"::14632,
+		"weekly_taxi_km"::1605,
+		"weekly_minibus_km"::6665,
+		"weekly_bicycle_km"::99205
+	];
 }
 
 /**
@@ -83,6 +95,7 @@ species mini_ville {
 		// lifetime for each vehicle
 		// number of km used with this vehicle during a tick
 		"walk"::[
+<<<<<<< HEAD
 			"km_per_tick_per_10k_person"::13060524	//TODO : obtained from the Scale3 simulation
 		],
 		"taxi"::[
@@ -99,6 +112,24 @@ species mini_ville {
 			"quantity"::3008,	// TODO : obtained from the Scale3 simulation
 			"lifetime"::84,
 			"km_per_tick_per_10k_person"::117643345	//TODO : obtained from the Scale3 simulation
+=======
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_walk_km"]*4.348	// value obtained from the Scale3 simulation
+		],
+		"taxi"::[
+			"quantity"::sim_csv_values_miniville["taxis_required"],	// value obtained from the Scale3 simulation
+			"lifetime"::138,
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_taxi_km"]*4.348	// value obtained from the Scale3 simulation
+		],
+		"minibus"::[
+			"quantity"::sim_csv_values_miniville["minibuses_required"],	// value obtained from the Scale3 simulation
+			"lifetime"::98,
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_minibus_km"]*4.348	// value obtained from the Scale3 simulation
+		],
+		"bicycle"::[
+			"quantity"::sim_csv_values_miniville["bicycles_required"],	// value obtained from the Scale3 simulation
+			"lifetime"::84,
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_bicycle_km"]*4.348	// value obtained from the Scale3 simulation
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		]
 	];
 	
@@ -112,8 +143,17 @@ species mini_ville {
 	
 	// function to setup the original amounts of vehicles of the mini_ville and their age
 	action setup_vehicles {
+<<<<<<< HEAD
 		loop v over:vehicles{
 			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
+=======
+		// TODO remove when mini-ville is enough. Right now we only get 49 instead of the proposed 6500 or 6825.
+		// the 49 comes from Urbanism creating only where the GIS cities are, and not the rest.
+		float miniville_difference_multiplier <- 6500.0 / 49.0;
+		loop v over:vehicles{
+			write vehicle_data[v];
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * miniville_difference_multiplier);
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];
@@ -141,6 +181,7 @@ species mini_ville {
 	
 	// ^^^ TRANSPORT BLOC VEHICLES ^^^
 
+<<<<<<< HEAD
 // --- Type-specific footprint (used for decay land recovery) ---
 map<string, float> surface_per_unit <- ["wood"::area_per_unit, "modular"::(area_per_unit * modular_surface_factor)];
 
@@ -154,18 +195,20 @@ bool debug_decay_log <- debug_decay_log_default;
 int tick_units_demolished <- 0;
 float tick_capacity_demolished <- 0.0;
 float tick_surface_freed <- 0.0;
+=======
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	init{
 		// initialize with partial usage of buildable area
 		used_buildable_area <- buildable_area * initial_fill_ratio;
 		remaining_buildable_area <- max(0.0, buildable_area - used_buildable_area);
-
+		
 		int total_units <- int(floor(used_buildable_area / area_per_unit));
 		wood_housing_units <- int(floor(total_units * 0.6));
 		modular_housing_units <- total_units - wood_housing_units;
-
+		
 		housing_capacity <- (wood_housing_units * capacity_per_unit["wood"])
 			+ (modular_housing_units * capacity_per_unit["modular"]);
-
+		
 		// debug log
 		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
 		

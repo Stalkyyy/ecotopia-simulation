@@ -15,6 +15,23 @@ import "../API/API.gaml"
 global{
 	float completion <- 1.0;
 	bool verbose_shortage <- false;
+<<<<<<< HEAD
+=======
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_transport <- [
+		
+		// From FranceTransportSimulation: Scale 1 / 2
+		"trains_required"::50960,
+		"train_km_month_scale1"::53338799,
+		"train_km_month_scale2"::7557975,
+		
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425
+	];
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 
 
 	/* Setup */
@@ -45,7 +62,11 @@ global{
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
+<<<<<<< HEAD
 			"quantity"::19310,	// from simulation at scale 1/2
+=======
+			"quantity"::sim_csv_values_transport["trains_required"],	// from simulation at scale 1/2
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			"capacity"::258, // (people)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0,
@@ -469,9 +490,15 @@ species transport parent:bloc{
 	// vvv CITY CODE vvv
     map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
 		// number of vehicles required for 10k people cities
+<<<<<<< HEAD
 		"taxi"::78,		// value obtained from the Scale3 simulation
 		"minibus"::38,	// value obtained from the Scale3 simulation
 		"bicycle"::3036	// value obtained from the Scale3 simulation
+=======
+		"taxi"::sim_csv_values_transport["taxis_required"],		// value obtained from the Scale3 simulation
+		"minibus"::sim_csv_values_transport["minibuses_required"],	// value obtained from the Scale3 simulation
+		"bicycle"::sim_csv_values_transport["bicycles_required"]	// value obtained from the Scale3 simulation
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	];
 	
     
@@ -666,8 +693,14 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
+<<<<<<< HEAD
     int required_trains_per_tick_for_65m_citizens <- 19310;		// value from simulation at scale 1/2
     int train_km_per_tick_per_65m_person <- 10927598+14150432;		// value from simulation at scale 1/2
+=======
+    int required_trains_per_tick_for_65m_citizens <- int(sim_csv_values_transport["trains_required"]);		// value from simulation at scale 1/2;
+    //int required_trains_per_tick_for_65m_citizens <- 50960;		// value from simulation at scale 1/2;
+    int train_km_per_tick_per_65m_person <- sim_csv_values_transport["train_km_month_scale1"]+sim_csv_values_transport["train_km_month_scale2"];		// value from simulation at scale 1/2
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()
@@ -954,12 +987,20 @@ experiment run_transport type: gui {
 			    	data c value: tick_production_T[c];
 			    }
 			}
+<<<<<<< HEAD
 			chart "Transport ressources Penury" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
+=======
+			chart "Transport ressources shortage" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop v over: (production_outputs_T) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
 			}
+<<<<<<< HEAD
 			chart "Used ressources Penury" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
+=======
+			chart "Used ressources shortage" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop v over: production_inputs_T {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
@@ -993,7 +1034,11 @@ experiment run_transport type: gui {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
+<<<<<<< HEAD
 			chart "Vehicles Penury" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
+=======
+			chart "Vehicles Shortage" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
+>>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop v over: (vehicles) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }

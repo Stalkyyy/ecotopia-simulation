@@ -12,6 +12,10 @@ import "../API/API.gaml"
  */
 global{
 	/* Setup */ 
+	float total_pop <- 68250000.0;
+	float nb_humans_per_agent <- 19500.0;
+	int nb_init_individuals <- int(total_pop / nb_humans_per_agent);
+	
 	int nb_ticks_per_year <- 12; // here, one tick is one month
 	string female_gender <- "F";
 	string male_gender <- "M";
@@ -28,9 +32,9 @@ global{
 	/* Parameters */ 
 	float coeff_birth <- 1.0; // a parameter that can be used to increase or decrease the birth probability
 	float coeff_death <- 1.0; // a parameter that can be used to increase or decrease the death probability
-	int nb_init_individuals <- 10000; // pop size
-	int pop_per_ind <- 6700;
-	int total_pop <- nb_init_individuals * pop_per_ind;
+	// int nb_init_individuals <- 10000; // pop size
+	// int pop_per_ind <- 6700;
+	// int total_pop <- nb_init_individuals * pop_per_ind;
 	
 	/* Counters & Stats */
 	int nb_inds -> {length(individual)};
@@ -143,6 +147,8 @@ global{
 species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- true; // true to activate the demography (births, deaths), else false.
+	
+	
 	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
@@ -270,7 +276,7 @@ species residents parent:bloc{
 			}
 
 			if (home != nil) {
-				home.population_count <- home.population_count + pop_per_ind;
+				home.population_count <- home.population_count + nb_humans_per_agent;
 			}
 		}
     }
@@ -285,7 +291,7 @@ species residents parent:bloc{
 					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
 				}
 			}
-			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * pop_per_ind);
+			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * nb_humans_per_agent);
 		}
 	}
     
@@ -398,7 +404,7 @@ species residents parent:bloc{
 		int nb_f <- individual count(each.gender=female_gender and not(dead(each)));
 		create individual number:new_births;
 		births <- births + new_births;
-		birth_rate <- new_births * pop_per_ind; // births this tick (actual population)
+		birth_rate <- new_births * nb_humans_per_agent; // births this tick (actual population)
 	}
 
 	/* 
@@ -662,7 +668,7 @@ species residents parent:bloc{
 				}
 			}
 		}
-		death_rate <- deaths_this_tick * pop_per_ind; // deaths this tick (actual population)
+		death_rate <- deaths_this_tick * nb_humans_per_agent; // deaths this tick (actual population)
 	}
 	
 	/* increments the age of the individual if the tick corresponds to its birthday, and updates birth and death probabilities */
@@ -680,7 +686,7 @@ species residents parent:bloc{
 	}
 	
 	action update_population{
-		total_pop <- nb_inds * pop_per_ind;
+		total_pop <- nb_inds * nb_humans_per_agent;
 		//write "" + total_pop;
 	}
 	
@@ -799,10 +805,10 @@ species residents parent:bloc{
 			float individual_housing <- resources_to_consume["total_housing_capacity"]; 
 
             // Add to total consumption
-            consumed["kg_meat"] <- consumed["kg_meat"] + individual_kg_meat * pop_per_ind;
-            consumed["kg_vegetables"] <- consumed["kg_vegetables"] + individual_kg_vegetables * pop_per_ind;
-            consumed["L water"] <- consumed["L water"] + individual_L * pop_per_ind;
-            consumed["total_housing_capacity"] <- consumed["total_housing_capacity"] + individual_housing * pop_per_ind;
+            consumed["kg_meat"] <- consumed["kg_meat"] + individual_kg_meat * nb_humans_per_agent;
+            consumed["kg_vegetables"] <- consumed["kg_vegetables"] + individual_kg_vegetables * nb_humans_per_agent;
+            consumed["L water"] <- consumed["L water"] + individual_L * nb_humans_per_agent;
+            consumed["total_housing_capacity"] <- consumed["total_housing_capacity"] + individual_housing * nb_humans_per_agent;
         }
     }
 
@@ -965,8 +971,8 @@ experiment run_demography type: gui {
 			}
 			*/
             chart "Gender evolution" type: series size: {0.33,0.33} position: {0, 0} {
-                data "number_of_man" value: pop_per_ind * (individual count(not dead(each) and each.gender = male_gender)) color: #red;
-                data "number_of_woman" value: pop_per_ind * (individual count(not dead(each) and each.gender = female_gender)) color: #blue;
+                data "number_of_man" value: nb_humans_per_agent * (individual count(not dead(each) and each.gender = male_gender)) color: #red;
+                data "number_of_woman" value: nb_humans_per_agent * (individual count(not dead(each) and each.gender = female_gender)) color: #blue;
                 data "total_population" value: total_pop color: #black;
             }
             chart "Age Pyramid" type: histogram background: #lightgray size: {0.33,0.33} position: {0, 0.33} {

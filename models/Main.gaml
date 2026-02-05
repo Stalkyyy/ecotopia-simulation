@@ -20,6 +20,8 @@ global {
 	bool use_gis <- true; // use GIS or not (needed to spatialise, instanciate territory species, and to display the map)
 	float step <- 1 #month; // the simulation step is a month
 	bool enable_demography <- true; // true to activate the demography (births, deaths), else false
+	
+	float nb_humans_per_agent_init <- 19500.0;
 
 	// GIS files
 	file shape_file_cities <- file("../includes/shapefiles/cities_france.shp");
@@ -45,11 +47,11 @@ global {
 		create residents number: 1 {
 			enabled <- enable_demography; // enable or not the demography
 		}
-		create agricultural number:1;
-		create energy number:1;
-		create transport number:1;
-		create ecosystem number:1;
-		create urbanism number:1;
+		create agricultural number:1 	{ nb_humans_per_agent <- nb_humans_per_agent_init; }
+		create energy number:1			{ nb_humans_per_agent <- nb_humans_per_agent_init; }
+		create transport number:1		{ nb_humans_per_agent <- nb_humans_per_agent_init; }
+		create ecosystem number:1		{ nb_humans_per_agent <- nb_humans_per_agent_init; }
+		create urbanism number:1		{ nb_humans_per_agent <- nb_humans_per_agent_init; }
 		create coordinator number:1; // instanciate the coordinator
 		// start simulation :
 		ask coordinator {
