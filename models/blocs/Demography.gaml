@@ -304,8 +304,8 @@ species residents parent:bloc{
     
     action update_food_demand {
 		float target_intake <- 2000.0;
-		float current_intake <- calorie_intake;
-		
+		float current_intake <- max(1.0, calorie_intake); // Prevent division by zero
+
 		// Weighted target by age structure
 		int nb_kids <- individual count (each.age <= 18);
 		int nb_adults <- individual count (each.age > 18 and each.age <= 60);
@@ -316,32 +316,37 @@ species residents parent:bloc{
 			weighted_target <- ((nb_kids * 1400.0) + (nb_adults * 2200.0) + (nb_elderly * 1800.0)) / total_sample;
 		}
 		target_intake <- weighted_target;
-		
+
 		ask consumer {
-			// Smooth proportional controller to avoid runaway spikes
-			float ratio <- target_intake / max(1.0, current_intake);
-			// If starving (current_intake very low) cap the boost
+			// Smooth proportional controller with recovery mechanism
+			float ratio <- target_intake / current_intake;
 			float factor <- ratio ^ 0.35;
 			factor <- min(1.15, max(0.85, factor));
-			resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * factor;
-			resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * factor;
-			// Clamp to realistic monthly per-person bounds to prevent overshoot
-			resources_to_consume["kg_meat"] <- max(4.0, min(25.0, resources_to_consume["kg_meat"]));
-			resources_to_consume["kg_vegetables"] <- max(8.0, min(50.0, resources_to_consume["kg_vegetables"]));
+
+			// Ensure minimum demand to avoid starvation
+			resources_to_consume["kg_meat"] <- max(4.0, resources_to_consume["kg_meat"] * factor);
+			resources_to_consume["kg_vegetables"] <- max(8.0, resources_to_consume["kg_vegetables"] * factor);
+
+			// Clamp to realistic monthly per-person bounds
+			resources_to_consume["kg_meat"] <- min(25.0, resources_to_consume["kg_meat"]);
+			resources_to_consume["kg_vegetables"] <- min(50.0, resources_to_consume["kg_vegetables"]);
 		}
 	}
 	
 	action update_water_demand {
 		float target_water <- 55.0; // L/month/person (~1.8 L/day)
-		float current_water <- last_consumed["L water"] / max(1, total_pop);
-		
+		float current_water <- max(1.0, last_consumed["L water"] / max(1, total_pop)); // Prevent division by zero
+
 		ask consumer {
-			float ratio <- target_water / max(1.0, current_water);
+			float ratio <- target_water / current_water;
 			float factor <- ratio ^ 0.35;
 			factor <- min(1.12, max(0.9, factor));
-			resources_to_consume["L water"] <- resources_to_consume["L water"] * factor;
+
+			// Ensure minimum demand to avoid dehydration
+			resources_to_consume["L water"] <- max(20.0, resources_to_consume["L water"] * factor);
+
 			// Clamp tighter to avoid swings
-			resources_to_consume["L water"] <- max(20.0, min(90.0, resources_to_consume["L water"]));
+			resources_to_consume["L water"] <- min(90.0, resources_to_consume["L water"]);
 		}
 	}
 	
