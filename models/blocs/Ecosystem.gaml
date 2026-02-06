@@ -45,29 +45,17 @@ global {
     
     // Monthly production / Seasonal production
     float monthly_water_regeneration <- 1.75e13;
-<<<<<<< HEAD
-    map<string, float> monthly_seasonal_water_regeneration <- [
-    	"winter"::0.48 * monthly_water_regeneration,
-    	"spring"::0.1 * monthly_water_regeneration, 
-    	"summer"::0.02 * monthly_water_regeneration,
-    	"autumn"::0.4 * monthly_water_regeneration
-=======
     float annual_water_regeneration <- 2.08e14;
     map<string, float> monthly_seasonal_water_regeneration <- [
     	"winter"::(0.48 * annual_water_regeneration) / 3,
     	"spring"::(0.1 * annual_water_regeneration) / 3, 
     	"summer"::(0.02 * annual_water_regeneration) / 3,
     	"autumn"::(0.4 * annual_water_regeneration) / 3
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
     ];
     
     map<string, float> water_used_by_bloc <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
 	map<string, float> water_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanism"::0.0, "population"::0.0];
-<<<<<<< HEAD
-	float received_water <- 0.0;
-=======
 	float received_water_tick <- 0.0;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
     
     
     /*
@@ -172,10 +160,7 @@ species ecosystem parent:bloc {
     
     
     action tick(list<human> pop, list<mini_ville> cities) {
-<<<<<<< HEAD
-=======
     	write water_used_by_bloc_tick;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
     	do update_wildlife_population();
     	do update_time_and_season();
         do regenerate_resources();
@@ -298,15 +283,7 @@ species ecosystem parent:bloc {
 	    if !(bloc_name in ges_by_bloc_tick.keys) {
 	        ges_by_bloc_tick[bloc_name] <- 0.0;
 	    }
-<<<<<<< HEAD
-    
-    	// Cumul global
     	ges_by_bloc[bloc_name] <- ges_by_bloc[bloc_name] + (emissions_gCO2e / 1000000.0);
-
-	    // Tick courant (pour affichage)
-=======
-    	ges_by_bloc[bloc_name] <- ges_by_bloc[bloc_name] + (emissions_gCO2e / 1000000.0);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	    ges_by_bloc_tick[bloc_name] <- ges_by_bloc_tick[bloc_name] + (emissions_gCO2e / 1000000.0);
 	}
 	
@@ -315,14 +292,10 @@ species ecosystem parent:bloc {
      */
     action receive_water_reinjection(float water_l) {
         water_stock_l <- min(water_stock_l + water_l, water_max_stock_l);
-<<<<<<< HEAD
-        received_water <- received_water + water_l;
-=======
         received_water_tick <- received_water_tick + water_l;
         // to save the actual water consumption from this bloc
         water_used_by_bloc["energy"] <- water_used_by_bloc["energy"] - water_l;
 		water_used_by_bloc_tick["energy"] <- water_used_by_bloc_tick["energy"] - water_l;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
     }
     
     action collect_last_tick_data{
@@ -333,10 +306,7 @@ species ecosystem parent:bloc {
             ges_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanisme"::0.0];
             water_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "transport"::0.0, "urbanisme"::0.0, "population"::0.0];
             land_used_by_bloc_tick <- ["agriculture"::0.0, "energy"::0.0, "urbanism"::0.0];
-<<<<<<< HEAD
-=======
             received_water_tick <- 0.0;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
             
             ask ecosystem_producer{
                 do reset_tick_counters;
@@ -379,17 +349,7 @@ species ecosystem parent:bloc {
             // WATER
             if("L water" in demand.keys){
                 float water_requested_l <- demand["L water"];
-<<<<<<< HEAD
-                if(water_requested_l <= water_stock_l){
-                    water_stock_l <- water_stock_l - water_requested_l;
-                    tick_production["L water"] <- tick_production["L water"] + water_requested_l;
-                    
-                    water_used_by_bloc[bloc_name] <- water_used_by_bloc[bloc_name] + water_requested_l;
-			        water_used_by_bloc_tick[bloc_name] <- water_used_by_bloc_tick[bloc_name] + water_requested_l;
-                } else {
-=======
                 if(water_requested_l > water_stock_l){
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
                     ok <- false;
                 }
                 
@@ -406,19 +366,7 @@ species ecosystem parent:bloc {
             // LAND
             if("m² land" in demand.keys){
                 float land_requested <- demand["m² land"];
-<<<<<<< HEAD
-                
-                if(land_requested <= land_stock){
-                    land_occupied <- land_occupied + land_requested;
-                    land_stock <- land_stock - land_requested;
-                    tick_production["m² land"] <- tick_production["m² land"] + land_requested;
-                    
-                    land_used_by_bloc[bloc_name] <- land_used_by_bloc[bloc_name] + land_requested;
-			        land_used_by_bloc_tick[bloc_name] <- land_used_by_bloc_tick[bloc_name] + land_requested;
-                } else {
-=======
                 if(land_requested > land_stock){
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
                     ok <- false;
                 }
                 
@@ -513,46 +461,28 @@ experiment run_ecosystem type: gui {
              * ROW 1
              */
             // Water stock evolution
-<<<<<<< HEAD
-            chart "Water stock (Liters)" type: series size: {0.5, 0.5} position: {-1, -1} y_log_scale:true {
-=======
             chart "Water stock (L)" type: series size: {0.25, 0.25} position: {0.0, 0.0} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
                 data "Stock" value: water_stock_l;
                 data "Max available" value: water_max_stock_l;
             }
             
-<<<<<<< HEAD
-            chart "Water consumption by bloc per tick (L / month)" type: series size: {0.5, 0.5} position: {-0.5, -1} y_log_scale:true {
-=======
             chart "Water consumption by bloc per tick (L / month)" type: series size: {0.25, 0.25} position: {0.25, 0.0} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: water_used_by_bloc_tick.keys {
 			        data b value: water_used_by_bloc_tick[b];
 			    }
 			}
 			
-<<<<<<< HEAD
-			chart "Cumulative water consumption by bloc (L / month)" type: series size: {0.5, 0.5} position: {0, -1} y_log_scale:true {
-=======
 			chart "Cumulative water consumption by bloc (L)" type: series size: {0.25, 0.25} position: {0.50, 0.0} y_log_scale:true {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: water_used_by_bloc.keys {
 			        data b value: water_used_by_bloc[b];
 			    }
 			}
 			
-<<<<<<< HEAD
-			// Cumulative reinjected water
-            chart "Cumulative water reinjected (L)" type: series size: {0.5,0.5} position: {0.5, -1} {
-			    data "Reinjected water" value: received_water;
-=======
 			// Comparison reinjected water VS withdrawn water VS consumed wter by bloc Energy
             chart "Energy water balance per tick (L / month)" type: series size: {0.25,0.25} position: {0.75, 0.0} y_log_scale:true {
 			    data "Reinjected water" value: received_water_tick;
 			    data "Consumed water" value: water_used_by_bloc_tick["energy"];
 			    data "Withdrawn water" value: water_used_by_bloc_tick["energy"] + received_water_tick;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			}
             
             
@@ -560,115 +490,72 @@ experiment run_ecosystem type: gui {
              * ROW 2
              */
             // Land usage
-<<<<<<< HEAD
-            chart "Land occupation (m²)" type: series size: {0.5, 0.5} position: {-1, -0.5} {
-=======
             chart "Land occupation (m²)" type: series size: {0.25, 0.25} position: {0.0, 0.25} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
                 data "Occupied" value: land_occupied;
                 data "Available" value: land_stock;
             }
             
-<<<<<<< HEAD
-            chart "Land occupation by bloc per tick (m²)" type: series size: {0.5, 0.5} position: {-0.5, -0.5} {
-=======
             chart "Land occupation by bloc per tick (m²)" type: series size: {0.25, 0.25} position: {0.25, 0.25} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: land_used_by_bloc_tick.keys {
 			        data b value: land_used_by_bloc_tick[b];
 			    }
 			}
 			
-<<<<<<< HEAD
-			chart "Cumulative land occupation by bloc (m²)" type: series size: {0.5, 0.5} position: {0, -0.5} {
-=======
 			chart "Cumulative land occupation by bloc (m²)" type: series size: {0.25, 0.25} position: {0.50, 0.25} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: land_used_by_bloc.keys {
 			        data b value: land_used_by_bloc[b];
 			    }
 			}
-<<<<<<< HEAD
-=======
 			
 			chart "Energy water balance" type: pie size: {0.25,0.25} position: {0.75, 0.25} {
 			    data "Consumed water" value: water_used_by_bloc_tick["energy"];
 			    data "Reinjected water" value: received_water_tick;
 			}
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
             
             
             /*
              * ROW 3
              */
             // GES stock and absorption : bugged kinda, not every execution show the correct thing
-<<<<<<< HEAD
-            chart "GES balance (kg CO2e)" type: series size: {0.5, 0.5} position: {-1, 0} {
-                data "GES in atmosphere" value: ges_stock;
-            }
-            
-            chart "GES emissions by bloc per tick (kg CO2e / month)" type: series size: {0.5, 0.5} position: {-0.5, 0} y_log_scale:true {
-=======
             chart "GES balance (kg CO2e)" type: series size: {0.25, 0.25} position: {0.0, 0.50} {
                 data "GES in atmosphere" value: ges_stock;
             }
             
             chart "GES emissions by bloc per tick (kg CO2e / month)" type: series size: {0.25, 0.25} position: {0.25, 0.50} y_log_scale:true {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: ges_by_bloc_tick.keys {
 			        data b value: ges_by_bloc_tick[b];
 			    }
 			}
 			
-<<<<<<< HEAD
-			chart "Cumulative GES emissions by bloc (kg CO2e)" type: series size: {0.5, 0.5} position: {0, 0} y_log_scale:true {
-=======
 			chart "Cumulative GES emissions by bloc (kg CO2e)" type: series size: {0.25, 0.25} position: {0.50, 0.50} y_log_scale:true {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    loop b over: ges_by_bloc.keys {
 			        data b value: ges_by_bloc[b];
 			    }
 			}
 			
-<<<<<<< HEAD
-=======
 			chart "Water consumption by bloc (pie)" type: pie size: {0.25,0.25} position: {0.75, 0.50} {
 			    loop b over: water_used_by_bloc.keys {
 			        data b value: water_used_by_bloc[b];
 			    }
 			}
 			
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			/*
              * ROW 4
              */
 			// Wood stock evolution
-<<<<<<< HEAD
-            chart "Wood stock (kg)" type: series size: {0.5, 0.5} position: {-1, 0.5} {
-=======
             chart "Wood stock (kg)" type: series size: {0.25, 0.25} position: {0.0, 0.75} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
                 data "Stock" value: wood_stock_kg;
                 data "Max" value: wood_max_stock_kg;
             }
             
             
             // Wildlife population
-<<<<<<< HEAD
-            chart "Wildlife population" type: series size: {0.5, 0.5} position: {-0.5, 0.5} {
-=======
             chart "Wildlife population" type: series size: {0.25, 0.25} position: {0.25, 0.75} {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			    data "Population animale" value: wildlife_population;
 			    data "Capacité écologique" value: wildlife_capacity;
 			}
 			
 			// Proportion hunted animals
-<<<<<<< HEAD
-			chart "Wildlife hunting pressure" type: series size: {0.5, 0.5} position: {0, 0.5} {
-			    data "Animaux chassés" value: wildlife_hunted_last_tick;
-			}
-=======
 			chart "Wildlife hunting pressure" type: series size: {0.25, 0.25} position: {0.50, 0.75} {
 			    data "Animaux chassés" value: wildlife_hunted_last_tick;
 			}
@@ -678,7 +565,6 @@ experiment run_ecosystem type: gui {
 			        data b value: ges_by_bloc[b];
 			    }
 			}
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
         }
     }
 }

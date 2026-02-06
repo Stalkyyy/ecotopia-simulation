@@ -370,23 +370,7 @@ ask cities {
 		// Enforce per-tick cap on starts (prevents 'instant mass build' artifacts at scale)
 		if(builds_started_count_tick >= max_builds_started_per_tick){ return false; }
 
-<<<<<<< HEAD
-		// Dry-run feasibility check (no API changes): only if the producer is our urban_producer
-		urban_producer up <- urban_producer(producer);
-		if(up != nil){
-			tick_can_checks <- tick_can_checks + 1;
-			map<string, unknown> can_info <- up.can_produce(c.pending_demand);
-			if(!bool(can_info["ok"])) {
-				tick_can_fails <- tick_can_fails + 1;
-				return false;
-			}
-		}
-
 		map<string, unknown> info <- producer.produce("urbanism", c.pending_demand);
-		if(!bool(info["ok"])) { tick_commit_fails <- tick_commit_fails + 1; }
-=======
-		map<string, unknown> info <- producer.produce("urbanism", c.pending_demand);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		if(bool(info["ok"])) {
 			ask c { do start_build; }
 			builds_started_count_tick <- builds_started_count_tick + 1;
@@ -406,21 +390,8 @@ ask cities {
 		return (sum(housing_types collect capacity_per_unit[each]) / length(housing_types));
 	}
 
-<<<<<<< HEAD
-	
-	int compute_build_duration(int wood_units, int modular_units){
-		int total_units <- wood_units + modular_units;
-		if(total_units <= 0){ return build_duration_months_default; }
-		float weighted <- (float(build_duration_months_wood) * wood_units + float(build_duration_months_modular) * modular_units) / float(total_units);
-		return max(1, int(ceil(weighted)));
-	}
-
-map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
-		// IMPORTANT: do NOT multiply again by pop_per_ind — these are already REAL units.
-=======
 	map<string, float> compute_resource_demand(int wood_units, int modular_units, float planned_surface){
 		// IMPORTANT: do NOT multiply again by nb_humans_per_agent — these are already REAL units.
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		map<string, float> demand <- ["kg wood"::0.0, "kg_cotton"::0.0, "kWh energy"::0.0, "m² land"::0.0];
 
 		demand["kg wood"] <- resource_per_unit_wood["kg wood"] * wood_units;
@@ -572,66 +543,7 @@ species urban_producer parent: production_agent{
 		return tick_emissions;
 	}
 
-<<<<<<< HEAD
-	
-	// Dry-run feasibility check (no side effects). Does NOT require API.gaml changes.
-	map<string, unknown> can_produce(map<string, float> demand){
-		bool ok <- true;
-
-		// Non-ecosystem resources: we can only validate presence of a supplier (unless sub-blocs expose their own checks).
-		loop r over: demand.keys{
-			float qty <- demand[r];
-			if(qty <= 0.0){ continue; }
-			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
-			if(!(external_producers.keys contains r)){
-				ok <- false;
-			}
-		}
-
-		// Ecosystem resources: we can safely pre-check stocks (land/wood/water) without consuming anything.
-		map<string, float> eco_demand <- [];
-		if("m² land" in demand.keys and demand["m² land"] > 0.0){ eco_demand["m² land"] <- demand["m² land"]; }
-		if("kg wood" in demand.keys and demand["kg wood"] > 0.0){ eco_demand["kg wood"] <- demand["kg wood"]; }
-		if("L water" in demand.keys and demand["L water"] > 0.0){ eco_demand["L water"] <- demand["L water"]; }
-
-		if(length(eco_demand) > 0){
-			if(length(ecosystem) = 0){
-				ok <- false;
-			} else {
-				// Check we have an ecosystem supplier bloc registered
-				bloc eco_bloc <- nil;
-				if(external_producers.keys contains "m² land"){ eco_bloc <- external_producers["m² land"]; }
-				else if(external_producers.keys contains "kg wood"){ eco_bloc <- external_producers["kg wood"]; }
-				else if(external_producers.keys contains "L water"){ eco_bloc <- external_producers["L water"]; }
-				if(eco_bloc = nil){
-					ok <- false;
-				} else {
-					float land_av <- 0.0;
-					float wood_av <- 0.0;
-					float water_av <- 0.0;
-					ask one_of(ecosystem){
-						land_av <- land_stock;
-						wood_av <- wood_stock_kg;
-						water_av <- water_stock_l;
-					}
-					if("m² land" in eco_demand.keys and eco_demand["m² land"] > land_av){ ok <- false; }
-					if("kg wood" in eco_demand.keys and eco_demand["kg wood"] > wood_av){ ok <- false; }
-					if("L water" in eco_demand.keys and eco_demand["L water"] > water_av){ ok <- false; }
-				}
-			}
-		}
-
-		return ["ok"::ok];
-	}
-
 	map<string, unknown> produce(string bloc_name, map<string, float> demand){
-		// Two-phase: dry-run feasibility check before consuming anything
-		map<string, unknown> pre <- can_produce(demand);
-		if(!bool(pre["ok"])) { return ["ok"::false]; }
-
-=======
-	map<string, unknown> produce(string bloc_name, map<string, float> demand){
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		bool ok <- true;
 		list<string> processed <- [];
 
@@ -643,11 +555,7 @@ species urban_producer parent: production_agent{
 			if(r in demand.keys){
 				float qty <- demand[r];
 				if(external_producers.keys contains r){
-<<<<<<< HEAD
-					map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
-=======
 					map<string, unknown> info <- external_producers[r].producer.produce("urbanism", [r::qty]);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 					if not bool(info["ok"]) {
 						ok <- false;
 					} else {
@@ -669,11 +577,7 @@ species urban_producer parent: production_agent{
 			if(r = "m² land" or r = "kg wood" or r = "L water"){ continue; }
 			float qty <- demand[r];
 			if(external_producers.keys contains r){
-<<<<<<< HEAD
-				map<string, unknown> info <- external_producers[r].producer.produce(bloc_name, [r::qty]);
-=======
 				map<string, unknown> info <- external_producers[r].producer.produce("urbanism", [r::qty]);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 				if not bool(info["ok"]) {
 					ok <- false;
 				} else {
@@ -725,11 +629,7 @@ species urban_producer parent: production_agent{
 					if(eco_bloc = nil){
 						ok <- false;
 					} else {
-<<<<<<< HEAD
-						map<string, unknown> info <- eco_bloc.producer.produce(bloc_name, eco_demand);
-=======
 						map<string, unknown> info <- eco_bloc.producer.produce("urbanism", eco_demand);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 						if not bool(info["ok"]) {
 							ok <- false;
 						} else {

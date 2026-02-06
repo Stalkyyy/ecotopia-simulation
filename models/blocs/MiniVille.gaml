@@ -95,24 +95,6 @@ species mini_ville {
 		// lifetime for each vehicle
 		// number of km used with this vehicle during a tick
 		"walk"::[
-<<<<<<< HEAD
-			"km_per_tick_per_10k_person"::13060524	//TODO : obtained from the Scale3 simulation
-		],
-		"taxi"::[
-			"quantity"::132,	// TODO : obtained from the Scale3 simulation
-			"lifetime"::138,
-			"km_per_tick_per_10k_person"::4562008	//TODO : obtained from the Scale3 simulation
-		],
-		"minibus"::[
-			"quantity"::38,	// TODO : obtained from the Scale3 simulation
-			"lifetime"::98,
-			"km_per_tick_per_10k_person"::5261131	//TODO : obtained from the Scale3 simulation
-		],
-		"bicycle"::[
-			"quantity"::3008,	// TODO : obtained from the Scale3 simulation
-			"lifetime"::84,
-			"km_per_tick_per_10k_person"::117643345	//TODO : obtained from the Scale3 simulation
-=======
 			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_walk_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"taxi"::[
@@ -129,7 +111,6 @@ species mini_ville {
 			"quantity"::sim_csv_values_miniville["bicycles_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::84,
 			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_bicycle_km"]*4.348	// value obtained from the Scale3 simulation
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		]
 	];
 	
@@ -143,17 +124,12 @@ species mini_ville {
 	
 	// function to setup the original amounts of vehicles of the mini_ville and their age
 	action setup_vehicles {
-<<<<<<< HEAD
-		loop v over:vehicles{
-			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
-=======
 		// TODO remove when mini-ville is enough. Right now we only get 49 instead of the proposed 6500 or 6825.
 		// the 49 comes from Urbanism creating only where the GIS cities are, and not the rest.
 		float miniville_difference_multiplier <- 6500.0 / 49.0;
 		loop v over:vehicles{
 			write vehicle_data[v];
 			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * miniville_difference_multiplier);
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];
@@ -181,22 +157,6 @@ species mini_ville {
 	
 	// ^^^ TRANSPORT BLOC VEHICLES ^^^
 
-<<<<<<< HEAD
-// --- Type-specific footprint (used for decay land recovery) ---
-map<string, float> surface_per_unit <- ["wood"::area_per_unit, "modular"::(area_per_unit * modular_surface_factor)];
-
-// --- Decay controls (can be overwritten by Urbanism each tick) ---
-float annual_decay_rate <- annual_decay_rate_default;
-int decay_period_cycles <- decay_period_cycles_default;
-float decay_land_recovery_fraction <- decay_land_recovery_fraction_default;
-bool debug_decay_log <- debug_decay_log_default;
-
-// Per-tick diagnostics (reset each cycle)
-int tick_units_demolished <- 0;
-float tick_capacity_demolished <- 0.0;
-float tick_surface_freed <- 0.0;
-=======
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	init{
 		// initialize with partial usage of buildable area
 		used_buildable_area <- buildable_area * initial_fill_ratio;

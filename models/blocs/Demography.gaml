@@ -148,8 +148,6 @@ species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- true; // true to activate the demography (births, deaths), else false.
 	
-	
-	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
 		
@@ -174,6 +172,12 @@ species residents parent:bloc{
 			coeff_death_water <- 1.0;
 			coeff_death_housing <- 1.0;
 			coeff_birth_housing <- 1.0;
+
+			if (empty(cities)) {
+				total_housing_capacity <- 0.0;
+			} else {
+				total_housing_capacity <- sum(cities collect each.housing_capacity);
+			}
 			
 			// Update seasonal mortality coefficient based on current month (0=Jan, 11=Dec)
 			int current_month <- int(cycle mod 12);
@@ -216,12 +220,8 @@ species residents parent:bloc{
 	action collect_last_tick_data{	
 		int nb_men <- individual count(not dead(each) and each.gender = male_gender);
 		int nb_woman <-  individual count(not dead(each)) - nb_men;          
-		ask consumer{
-			// collect consumption data from last tick
-			map<string, float> cons <- get_tick_consumption();
-			last_consumed <- cons;
-			//write "[DEMOGRAPHY CONSUMER] consumption collected: " + cons;
-		}
+		// Use producer inputs to capture what was actually received.
+		last_consumed <- producer.get_tick_inputs_used();
 
 		ask residents_consumer{ // prepare next tick on consumer side
 			do reset_tick_counters;
@@ -278,6 +278,12 @@ species residents parent:bloc{
 			if (home != nil) {
 				home.population_count <- home.population_count + nb_humans_per_agent;
 			}
+		}
+
+		if (empty(available_cities)) {
+			total_housing_capacity <- 0.0;
+		} else {
+			total_housing_capacity <- sum(available_cities collect each.housing_capacity);
 		}
     }
 
@@ -534,8 +540,8 @@ species residents parent:bloc{
 	/* calculate housing deficit */
 	action get_housing_deficit{
 		//write "[DEMOGRAPHY] total population: " + total_pop;
-		//write "[DEMOGRAPHY] total housing capacity: " + last_consumed["total_housing_capacity"];
-		housing_deficit <- total_pop - int(last_consumed["total_housing_capacity"]);
+		//write "[DEMOGRAPHY] total housing capacity: " + total_housing_capacity;
+		housing_deficit <- total_pop - int(total_housing_capacity);
 	}
 
 	/* calculate mortality rate by housing deficit */
@@ -728,6 +734,7 @@ species residents parent:bloc{
 			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
 			loop r over: demand.keys{
 				float qty <- demand[r];
+				float received_qty <- 0.0;
 				if(external_producers.keys contains r){
 					// bool available <- external_producers[r].producer.produce([r::qty]);
 					// if(not available){
@@ -738,11 +745,26 @@ species residents parent:bloc{
 					if not bool(info["ok"]) {
 						ok <- false;
 					}
+
+					received_qty <- qty;
+					if (r = "kg_meat" and info.keys contains "transmitted_meat") {
+						received_qty <- float(info["transmitted_meat"]);
+					} else if (r = "kg_vegetables" and info.keys contains "transmitted_vegetables") {
+						received_qty <- float(info["transmitted_vegetables"]);
+					} else if (r = "L water") {
+						if (info.keys contains "transmitted_water") {
+							received_qty <- float(info["transmitted_water"]);
+						} else if (info.keys contains "transmitted_L water") {
+							received_qty <- float(info["transmitted_L water"]);
+						}
+					}
+				} else {
+					ok <- false;
 				}
 				if(not (tick_resources_used.keys contains r)){
 					tick_resources_used[r] <- 0.0;
 				}
-				tick_resources_used[r] <- tick_resources_used[r] + qty;
+				tick_resources_used[r] <- tick_resources_used[r] + received_qty;
 				//write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
 			}
 			
