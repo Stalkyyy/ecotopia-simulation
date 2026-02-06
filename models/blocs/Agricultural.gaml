@@ -16,6 +16,8 @@ import "../blocs/Demography.gaml"
 global{
 	
 	float nb_humans_per_agent <- 19500.0;
+	// DEBUG: multiplier to scale all delivered outputs (set to 0.0 to simulate full shortage)
+	float debug_output_multiplier <- 1.0;
 	
 	/* Setup */
 	list<string> production_outputs_A <- ["kg_meat", "kg_vegetables", "kg_cotton"];
@@ -720,7 +722,7 @@ species agricultural parent:bloc{
 	            }
 	
 	            
-	            float deliver_real <- deliver_remaining + additional_used + from_stock;
+	            float deliver_real <- (deliver_remaining + additional_used + from_stock) * debug_output_multiplier;
 	            
 		        if(demand[c] <= deliver_real){
 		        	res["ok"] <- true;

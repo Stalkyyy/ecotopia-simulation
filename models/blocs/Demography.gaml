@@ -172,12 +172,6 @@ species residents parent:bloc{
 			coeff_death_water <- 1.0;
 			coeff_death_housing <- 1.0;
 			coeff_birth_housing <- 1.0;
-
-			if (empty(cities)) {
-				total_housing_capacity <- 0.0;
-			} else {
-				total_housing_capacity <- sum(cities collect each.housing_capacity);
-			}
 			
 			// Update seasonal mortality coefficient based on current month (0=Jan, 11=Dec)
 			int current_month <- int(cycle mod 12);
@@ -220,8 +214,12 @@ species residents parent:bloc{
 	action collect_last_tick_data{	
 		int nb_men <- individual count(not dead(each) and each.gender = male_gender);
 		int nb_woman <-  individual count(not dead(each)) - nb_men;          
-		// Use producer inputs to capture what was actually received.
-		last_consumed <- producer.get_tick_inputs_used();
+		ask consumer{
+			// collect consumption data from last tick
+			map<string, float> cons <- get_tick_consumption();
+			last_consumed <- cons;
+			//write "[DEMOGRAPHY CONSUMER] consumption collected: " + cons;
+		}
 
 		ask residents_consumer{ // prepare next tick on consumer side
 			do reset_tick_counters;
@@ -233,19 +231,25 @@ species residents parent:bloc{
     }
     
     action population_activity(list<human> pop) {
-        ask pop{ // execute the consumption behavior of the population
-            ask myself.residents_consumer{
-                do consume(myself); // individuals consume energy
-            }
-        }
-         
-        ask residents_consumer{ // produce the required quantities
-            ask residents_producer{
-                loop c over: myself.consumed.keys{
-                    do produce("population", [c::myself.consumed[c]]);
-                }
-            } 
-        }
+	    // 1) Build the demand side (what the population wants this tick)
+	    ask pop{ // execute the consumption behavior of the population
+	        ask myself.residents_consumer{
+	            do consume(myself); // build per-capita demand based on age
+	        }
+	    }
+
+	    // 2) Aggregate demand and request suppliers
+	    map<string, float> demand <- [];
+	    ask residents_consumer { demand <- copy(demanded); }
+
+	    ask residents_producer {
+	        do produce("population", demand);
+	    }
+
+	    // 3) Record what was REALLY delivered (may be lower than demand)
+	    map<string, float> delivered <- [];
+	    ask residents_producer { delivered <- copy(last_delivery); }
+	    ask residents_consumer { do set_actual_consumption(delivered); }
     }
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -278,12 +282,6 @@ species residents parent:bloc{
 			if (home != nil) {
 				home.population_count <- home.population_count + nb_humans_per_agent;
 			}
-		}
-
-		if (empty(available_cities)) {
-			total_housing_capacity <- 0.0;
-		} else {
-			total_housing_capacity <- sum(available_cities collect each.housing_capacity);
 		}
     }
 
@@ -540,8 +538,8 @@ species residents parent:bloc{
 	/* calculate housing deficit */
 	action get_housing_deficit{
 		//write "[DEMOGRAPHY] total population: " + total_pop;
-		//write "[DEMOGRAPHY] total housing capacity: " + total_housing_capacity;
-		housing_deficit <- total_pop - int(total_housing_capacity);
+		//write "[DEMOGRAPHY] total housing capacity: " + last_consumed["total_housing_capacity"];
+		housing_deficit <- total_pop - int(last_consumed["total_housing_capacity"]);
 	}
 
 	/* calculate mortality rate by housing deficit */
@@ -698,12 +696,13 @@ species residents parent:bloc{
 	
 	
 	
-	species residents_producer parent:production_agent {
+		species residents_producer parent:production_agent {
 		map<string, bloc> external_producers;
 				
 		map<string, float> tick_resources_used <- ["kg_meat"::0.0, "kg_vegetables"::0.0, "L water"::0.0, "total_housing_capacity"::0.0];
 		map<string, float> tick_production <- [];
 		map<string, float> tick_emissions <- [];
+		map<string, float> last_delivery <- [];
 		
 		map<string, float> get_tick_inputs_used{		
 			return tick_resources_used;
@@ -719,6 +718,7 @@ species residents parent:bloc{
 			loop r over: tick_resources_used.keys{
 				tick_resources_used[r] <- 0.0;
 			}
+			last_delivery <- [];
 		}
 
 		init{
@@ -731,49 +731,70 @@ species residents parent:bloc{
 		 */
 		map<string, unknown> produce(string bloc_name, map<string, float> demand){
 			bool ok <- true;
-			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
+			map<string, float> delivered <- [];
+
 			loop r over: demand.keys{
 				float qty <- demand[r];
-				float received_qty <- 0.0;
-				if(external_producers.keys contains r){
-					// bool available <- external_producers[r].producer.produce([r::qty]);
-					// if(not available){
-					// 	 ok <- false;
-					// }
-					
-					map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
-					if not bool(info["ok"]) {
-						ok <- false;
-					}
+				float received <- 0.0;
+				bool resource_ok <- true;
 
-					received_qty <- qty;
-					if (r = "kg_meat" and info.keys contains "transmitted_meat") {
-						received_qty <- float(info["transmitted_meat"]);
-					} else if (r = "kg_vegetables" and info.keys contains "transmitted_vegetables") {
-						received_qty <- float(info["transmitted_vegetables"]);
-					} else if (r = "L water") {
-						if (info.keys contains "transmitted_water") {
-							received_qty <- float(info["transmitted_water"]);
-						} else if (info.keys contains "transmitted_L water") {
-							received_qty <- float(info["transmitted_L water"]);
+				if(external_producers.keys contains r){
+					if(r = "total_housing_capacity"){
+						// Housing capacity is provided as an output metric; don't "order" it, just read it.
+						map<string, float> outputs <- external_producers[r].producer.get_tick_outputs_produced();
+						if("total_housing_capacity" in outputs.keys) {
+							received <- outputs["total_housing_capacity"];
+						} else {
+							received <- 0.0;
+							resource_ok <- false;
+						}
+					} else {
+						map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
+						if ("ok" in info.keys and not bool(info["ok"])) {
+							resource_ok <- false;
+						}
+
+						// Extract actually transmitted quantities when provided by the supplier
+						if(r = "kg_meat" and "transmitted_meat" in info.keys){
+							received <- float(info["transmitted_meat"]);
+						} else if(r = "kg_vegetables" and "transmitted_vegetables" in info.keys){
+							received <- float(info["transmitted_vegetables"]);
+						} else if(r = "kg_cotton" and "transmitted_cotton" in info.keys){
+							received <- float(info["transmitted_cotton"]);
+						} else if(r = "L water" and "transmitted_water" in info.keys){
+							received <- float(info["transmitted_water"]);
+						} else if(r = "kWh energy" and "transmitted_kwh" in info.keys){
+							received <- float(info["transmitted_kwh"]);
+						} else if(r = "m² land" and "transmitted_land" in info.keys){
+							received <- float(info["transmitted_land"]);
+						} else {
+							received <- qty;
 						}
 					}
 				} else {
-					ok <- false;
+					resource_ok <- false;
+					received <- 0.0;
 				}
+
 				if(not (tick_resources_used.keys contains r)){
 					tick_resources_used[r] <- 0.0;
 				}
-				tick_resources_used[r] <- tick_resources_used[r] + received_qty;
-				//write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
+				tick_resources_used[r] <- tick_resources_used[r] + received;
+				delivered[r] <- received;
+
+				if(not resource_ok){
+					ok <- false;
+				}
 			}
-			
+
+			last_delivery <- copy(delivered);
+
 			map<string, unknown> prod_info <- [
-        		"ok"::ok
+        		"ok"::ok,
+        		"delivered"::delivered
         	];
-			
+
 			return prod_info;
-			
 		}
 		
 		action set_supplier(string product, bloc bloc_agent){
@@ -781,9 +802,10 @@ species residents parent:bloc{
 		}
 	}
 
-	species residents_consumer parent:consumption_agent{
-    
+		species residents_consumer parent:consumption_agent{
+
         map<string, float> consumed <- [];
+        map<string, float> demanded <- [];
 		// Initial demand set to ~1500-1600 kcal/day to start (15kg meat + 25kg veg)
 		// 15*2500 + 25*500 = 37500 + 12500 = 50000 / 30 = 1666 kcal/day
 		map<string, float> resources_to_consume <- ["kg_meat"::10.0, "kg_vegetables"::15.0, "L water"::50.0, "total_housing_capacity"::1.0];
@@ -792,23 +814,27 @@ species residents parent:bloc{
             return copy(consumed);
         }
         
-        init{
-            loop c over: production_inputs{
-                consumed[c] <- 0;
-            }
-        }
-        
-        action reset_tick_counters{
-            loop c over: consumed.keys{
+		init{
+			loop c over: production_inputs{
 				consumed[c] <- 0;
-            }
-        }
+				demanded[c] <- 0;
+			}
+		}
+        
+		action reset_tick_counters{
+			loop c over: consumed.keys{
+				consumed[c] <- 0;
+			}
+			loop c over: demanded.keys{
+				demanded[c] <- 0;
+			}
+		}
         
         /**
          * Calculate monthly energy consumption per individual
          * Consumption varies slightly
          */
-        action consume(human h){
+		action consume(human h){
             // float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
             // float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
 			
@@ -824,14 +850,21 @@ species residents parent:bloc{
 			float individual_kg_vegetables <- resources_to_consume["kg_vegetables"] * modifier;
             float individual_L <- resources_to_consume["L water"] * modifier;
 			// Housing is typically 1 unit per person regardless of age (or per household, but simplifying)
-			float individual_housing <- resources_to_consume["total_housing_capacity"]; 
+			float individual_housing <- resources_to_consume["total_housing_capacity"];
 
-            // Add to total consumption
-            consumed["kg_meat"] <- consumed["kg_meat"] + individual_kg_meat * nb_humans_per_agent;
-            consumed["kg_vegetables"] <- consumed["kg_vegetables"] + individual_kg_vegetables * nb_humans_per_agent;
-            consumed["L water"] <- consumed["L water"] + individual_L * nb_humans_per_agent;
-            consumed["total_housing_capacity"] <- consumed["total_housing_capacity"] + individual_housing * nb_humans_per_agent;
+	            // Add to aggregated demand (real population scale)
+	            demanded["kg_meat"] <- demanded["kg_meat"] + individual_kg_meat * nb_humans_per_agent;
+	            demanded["kg_vegetables"] <- demanded["kg_vegetables"] + individual_kg_vegetables * nb_humans_per_agent;
+	            demanded["L water"] <- demanded["L water"] + individual_L * nb_humans_per_agent;
+	            demanded["total_housing_capacity"] <- demanded["total_housing_capacity"] + individual_housing * nb_humans_per_agent;
         }
+
+		action set_actual_consumption(map<string, float> delivered){
+			// Record what was really received after supplier shortages
+			loop r over: delivered.keys{
+				consumed[r] <- delivered[r];
+			}
+		}
     }
 
 	/* Get multiplier for resource needs based on age */

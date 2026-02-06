@@ -113,34 +113,20 @@ global {
 	reflex stop_simulation when: cycle >= simulation_duration {
 	    float pop_size_safe <- (population_size = 0) ? 1.0 : float(population_size);
 	
-<<<<<<< HEAD
-	    float peak_taxis_per_1k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 1000.0;
-	    float peak_bikes_per_1k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 1000.0;
-	    float peak_minibus_fleet_per_1k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 1000.0;
-	    float peak_trains_fleet_per_1k <- (max_vehicles_needed["train"] / pop_size_safe) * 1000.0;
-=======
 	    float peak_taxis_per_10k_citizens <- (max_vehicles_needed["taxi"] / pop_size_safe) * 10000.0;
 	    float peak_bikes_per_10k_citizens <- (max_vehicles_needed["bicycle"] / pop_size_safe) * 10000.0;
 	    float peak_minibus_fleet_per_10k <- (max_vehicles_needed["mini_bus"] / pop_size_safe) * 10000.0;
 	    float peak_trains_fleet_per_10k <- (max_vehicles_needed["train"] / pop_size_safe) * 10000.0;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	    
 	
 	    // header
 	    save ["parameter", "value"] to: "city_profile.csv" rewrite: true;
 	    
 	    // append data
-<<<<<<< HEAD
-	    save ["peak_taxis_per_1k", peak_taxis_per_1k_citizens] to: "city_profile.csv" rewrite: false;
-	    save ["peak_bikes_per_1k", peak_bikes_per_1k_citizens] to: "city_profile.csv" rewrite: false;
-	    save ["peak_minibus_fleet_per_1k", peak_minibus_fleet_per_1k] to: "city_profile.csv" rewrite: false;
-	    save ["peak_trains_fleet_per_1k", peak_trains_fleet_per_1k] to: "city_profile.csv" rewrite: false;
-=======
 	    save ["peak_taxis_per_10k", peak_taxis_per_10k_citizens] to: "city_profile.csv" rewrite: false;
 	    save ["peak_bikes_per_10k", peak_bikes_per_10k_citizens] to: "city_profile.csv" rewrite: false;
 	    save ["peak_minibus_fleet_per_10k", peak_minibus_fleet_per_10k] to: "city_profile.csv" rewrite: false;
 	    save ["peak_trains_fleet_per_10k", peak_trains_fleet_per_10k] to: "city_profile.csv" rewrite: false;
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	    
 	    loop v over: vehicle_types {
 	        save ["total_km_" + v, total_km_usage[v]] to: "city_profile.csv" rewrite: false;
@@ -209,10 +195,6 @@ species citizen {
     action plan_weekly_schedule {
         // Work days: 3.5 days/week avg -> 3 or 4 days
         int nb_work_days <- flip(0.5) ? 3 : 4;
-<<<<<<< HEAD
-        list<int> possible_days <- [0, 1, 2, 3, 4, 5, 6];
-        list<int> my_work_days <- nb_work_days among possible_days;
-=======
         list<float> day_weights <- [1.0, 1.0, 0.4, 1.0, 1.0, 0.2, 0.05]; // less work on sunday etc
         list<int> possible_days <- [0, 1, 2, 3, 4, 5, 6];
         list<int> my_work_days <- [];
@@ -222,7 +204,6 @@ species citizen {
 	            my_work_days << candidate;
 	        }
 	    }
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
         
 		// Errand day (0.5 per week per person -> half the pop has 1 errand)
         int my_errand_day <- -1;
@@ -300,14 +281,9 @@ species citizen {
         
         // Leisure: 1~5h (2h avg)
         float leisure_roll <- rnd(1.0);
-<<<<<<< HEAD
-        if (leisure_roll < 0.5) { leisure_type <- "external"; }
-        else if (leisure_roll < 0.8) { leisure_type <- "outskirts"; }
-=======
         if (leisure_roll < 0.25) { leisure_type <- "external"; }
         else if (leisure_roll < 0.4) { leisure_type <- "outskirts"; }
         else if (leisure_roll < 0.8) {leisure_type <- "city"; }
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
         else { leisure_type <- "home"; }
 
         loop i from: 1 to: 300 {
@@ -337,11 +313,8 @@ species citizen {
             leisure_location <- {center.x + dist * cos(angle), center.y + dist * sin(angle)};
         } else if (leisure_type = "external") { // we move to the train station (mini ville scale)
         	leisure_location <- train_station;
-<<<<<<< HEAD
-=======
         } else if (leisure_type = "city") {
         	leisure_location <- city_agent.get_random_position_in_city();
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
         } else {
             leisure_location <- home;
         }
@@ -384,11 +357,7 @@ species citizen {
     
     reflex start_leisure when: current_date.hour = leisure_start_hour and activity = "idle" {
         activity <- "leisure";
-<<<<<<< HEAD
-        if (leisure_type = "outskirts") {
-=======
         if (leisure_type = "outskirts" or leisure_type = "city") {
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
             do add_travel_to_total(vehicle_usage(location, leisure_location, create_vehicle_choice_initial_usage()));
             location <- leisure_location;
         } else if (leisure_type = "external") {
@@ -467,11 +436,7 @@ species citizen {
 		    return usage;
 		}
 		// sinon : random entre taxi et vélo+marche
-<<<<<<< HEAD
-		bool prend_taxi <- (rnd(1.0) <= 0.05);	// prend le taxi dans 5% des cas (je pense que les ecotopiens prendrait le taxi très rarement pour une distance si basse (échelle 3))
-=======
 		bool prend_taxi <- (rnd(1.0) <= 0.03);	// prend le taxi dans 3% des cas (je pense que les ecotopiens prendrait le taxi très rarement pour une distance si basse (échelle 3))
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 		if prend_taxi {
 			usage["taxi"] <- usage["taxi"] + distance;
 	    	return usage;
@@ -485,11 +450,7 @@ species citizen {
     action add_travel_to_total (map<string, float> usage){
     	// add to each vehicle's total usage this tick
     	loop vehicle over: vehicle_types{
-<<<<<<< HEAD
-    		km_usage[vehicle] <- km_usage[vehicle] + usage[vehicle];
-=======
     		km_usage[vehicle] <- km_usage[vehicle] + (usage[vehicle] / #km); // div nb km
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
     	}
     	// update the number of vehicles needed (mini_buses are handled by the bus class directly)
     	if usage["bicycle"] > 0 {
@@ -700,11 +661,7 @@ species bus_system {
 	    }
 		
 	    vehicles_needed["mini_bus"] <- ceil(max_arc_flow / mini_bus_capacity) * 2;	// times 2 because we need buses going both ways
-<<<<<<< HEAD
-	    km_usage["mini_bus"] <- vehicles_needed["mini_bus"] * (nb_bus_stops-1) * bus_arc_distance;	// distance totale = distance pour un tour complet multiplié par le nombre de bus utilisés ce tick
-=======
 	    km_usage["mini_bus"] <- (vehicles_needed["mini_bus"] * (nb_bus_stops-1) * bus_arc_distance) / #km;	// distance totale = distance pour un tour complet multiplié par le nombre de bus utilisés ce tick
->>>>>>> 7e044260ba3797e7355b2e25dec5ab184ecb7f9b
 	}
 	
 	aspect base {
