@@ -607,14 +607,12 @@ species residents parent:bloc{
 	/* updates global happiness based on resource satisfaction */
 	action update_happiness_trend {
 		// Calculate current stress based on mortality coefficients (deviation from 1.0)
-		// Ideal state: coeffs are < 1.0 (bonus from good conditions)
 		float food_stress <- max(0.0, coeff_death_cal - 1.05); // Tolerance up to 1.05 before stress
 		float water_stress <- max(0.0, coeff_death_water - 1.05);
 		float housing_stress <- max(0.0, coeff_death_housing - 1.05);
 		float total_stress <- food_stress + water_stress + housing_stress;
 		
 		// Calculate satisfaction bonuses
-		// Changed to <= 1.01 to include "neutral/met needs" state as positive contribution
 		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
 		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
 		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
@@ -627,33 +625,29 @@ species residents parent:bloc{
 		// Update global happiness index
 		float target_happiness <- 0.5;
 		if (total_stress > 0) {
-			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
-			// Under stress: drop fast
-			global_happiness_index <- (global_happiness_index * 0.6) + (target_happiness * 0.4);
+			target_happiness <- max(0.4, 0.5 - (total_stress * 1.8));
+			global_happiness_index <- (global_happiness_index * 0.7) + (target_happiness * 0.3);
 		} else if (total_bonus > 0) {
 			// If all bonuses met, target rises slowly
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.12));
-			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15)); // Faster rise
+			global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
 		} else {
 			// Neutral state, drift slowly to center
 			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
 		}
 
 		// Adjust birth rate based on happiness
-		// If happy (>0.6), birth coefficient rises over time
-		// If unhappy (<0.4), it drops
 		if (global_happiness_index > 0.6) {
-			coeff_birth_happiness <- coeff_birth_happiness + 0.002;
+			coeff_birth_happiness <- coeff_birth_happiness + 0.001; // Slower accumulation
 		} else if (global_happiness_index < 0.4) {
-			coeff_birth_happiness <- coeff_birth_happiness - 0.005;
+			coeff_birth_happiness <- coeff_birth_happiness - 0.003; // Faster drop
 		} else {
-			// drift back to 1.0 if neutral
 			if (coeff_birth_happiness > 1.0) { coeff_birth_happiness <- coeff_birth_happiness - 0.001; }
 			else if (coeff_birth_happiness < 1.0) { coeff_birth_happiness <- coeff_birth_happiness + 0.001; }
 		}
 		
 		// Clamp birth coefficient
-		coeff_birth_happiness <- max(0.5, min(1.8, coeff_birth_happiness));
+		coeff_birth_happiness <- max(0.5, min(1.5, coeff_birth_happiness));
 	}
 
 	/* apply deaths*/
