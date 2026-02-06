@@ -58,6 +58,7 @@ global{
 
 	/* Variables for mortality by calorie intake */
 	float calorie_intake <- 0.0;
+	float smoothed_calorie_intake <- 2000.0;
 	float coeff_death_cal <- 1.0; // 1.0 = normal, >1.0 = increased mortality, <1.0 = decreased mortality
 
 	/* Variables for mortality by water intake */
@@ -158,6 +159,7 @@ species residents parent:bloc{
 		create residents_consumer number:1 returns:consumers;
 		producer <- first(producers);
 		consumer <- first(consumers);
+		do initialize_food_demand;
 	}
 	
 	/* updates the population every tick */
@@ -185,6 +187,7 @@ species residents parent:bloc{
 			do update_deaths;
 			do increment_age;
 			do update_population;
+			do get_calorie_intake;
 			
 			// Dynamic adjustment of food demand based on mortality/intake
 			do update_food_demand;
@@ -304,7 +307,6 @@ species residents parent:bloc{
     
     action update_food_demand {
 		float target_intake <- 2000.0;
-		float current_intake <- max(1.0, calorie_intake); // Prevent division by zero
 
 		// Weighted target by age structure
 		int nb_kids <- individual count (each.age <= 18);
@@ -318,18 +320,61 @@ species residents parent:bloc{
 		target_intake <- weighted_target;
 
 		ask consumer {
-			// Smooth proportional controller with recovery mechanism
-			float ratio <- target_intake / current_intake;
-			float factor <- ratio ^ 0.35;
-			factor <- min(1.15, max(0.85, factor));
+			// Drive demand from a stable per-capita target rather than reactive shortages
+			float meat_prev <- resources_to_consume["kg_meat"];
+			float veg_prev <- resources_to_consume["kg_vegetables"];
+			float kcal_meat_prev <- meat_prev * 2500.0;
+			float kcal_veg_prev <- veg_prev * 500.0;
+			float kcal_total_prev <- max(1.0, kcal_meat_prev + kcal_veg_prev);
+			float meat_kcal_share <- kcal_meat_prev / kcal_total_prev;
+
+			float target_kcal_month <- target_intake * 30.0;
+			float target_meat_kg <- (target_kcal_month * meat_kcal_share) / 2500.0;
+			float target_veg_kg <- (target_kcal_month * (1.0 - meat_kcal_share)) / 500.0;
+
+			// Smoothly approach the target (limits sudden jumps)
+			float alpha <- 0.03;
+			float meat_next <- (1.0 - alpha) * meat_prev + alpha * target_meat_kg;
+			float veg_next <- (1.0 - alpha) * veg_prev + alpha * target_veg_kg;
+			float max_step <- 0.03;
+			meat_next <- min(meat_prev * (1.0 + max_step), max(meat_prev * (1.0 - max_step), meat_next));
+			veg_next <- min(veg_prev * (1.0 + max_step), max(veg_prev * (1.0 - max_step), veg_next));
 
 			// Ensure minimum demand to avoid starvation
-			resources_to_consume["kg_meat"] <- max(4.0, resources_to_consume["kg_meat"] * factor);
-			resources_to_consume["kg_vegetables"] <- max(8.0, resources_to_consume["kg_vegetables"] * factor);
+			resources_to_consume["kg_meat"] <- max(4.0, meat_next);
+			resources_to_consume["kg_vegetables"] <- max(8.0, veg_next);
 
 			// Clamp to realistic monthly per-person bounds
 			resources_to_consume["kg_meat"] <- min(25.0, resources_to_consume["kg_meat"]);
 			resources_to_consume["kg_vegetables"] <- min(50.0, resources_to_consume["kg_vegetables"]);
+		}
+	}
+
+	action initialize_food_demand {
+		// Align initial demand with the target to avoid artificial early jumps
+		int nb_kids <- individual count (each.age <= 18);
+		int nb_adults <- individual count (each.age > 18 and each.age <= 60);
+		int nb_elderly <- individual count (each.age > 60);
+		int total_sample <- nb_kids + nb_adults + nb_elderly;
+		float weighted_target <- 2200.0;
+		if (total_sample > 0) {
+			weighted_target <- ((nb_kids * 1400.0) + (nb_adults * 2200.0) + (nb_elderly * 1800.0)) / total_sample;
+		}
+		float target_kcal_month <- weighted_target * 30.0;
+
+		ask consumer {
+			float meat_prev <- resources_to_consume["kg_meat"];
+			float veg_prev <- resources_to_consume["kg_vegetables"];
+			float kcal_meat_prev <- meat_prev * 2500.0;
+			float kcal_veg_prev <- veg_prev * 500.0;
+			float kcal_total_prev <- max(1.0, kcal_meat_prev + kcal_veg_prev);
+			float meat_kcal_share <- kcal_meat_prev / kcal_total_prev;
+
+			float target_meat_kg <- (target_kcal_month * meat_kcal_share) / 2500.0;
+			float target_veg_kg <- (target_kcal_month * (1.0 - meat_kcal_share)) / 500.0;
+
+			resources_to_consume["kg_meat"] <- min(25.0, max(4.0, target_meat_kg));
+			resources_to_consume["kg_vegetables"] <- min(50.0, max(8.0, target_veg_kg));
 		}
 	}
 	
@@ -1087,6 +1132,3 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 		}*/
 	}
 }
-
-
-
