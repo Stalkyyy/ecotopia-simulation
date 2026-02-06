@@ -825,6 +825,7 @@ species transport parent:bloc{
 		// produce ressources to answer a demand in transport 
 		map<string, unknown> produce(string bloc_name, map<string,float> demand){
 			bool global_success <- true;
+			float quantity_sent <- 0.0;
 						
 			loop service over: demand.keys{
 				float quantity_asked <- demand[service]; // already in km*pers or km*kg
@@ -901,13 +902,16 @@ species transport parent:bloc{
 							float emissions <- vehicle_km * specs["emissions"];
 							tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
 							do send_ges_to_ecosystem("transport", emissions);
+							
+							quantity_sent <- new_quantity;
 						}
 					}
 				}
 			}
 			
 			map<string, unknown> prod_info <- [
-        		"ok"::global_success
+        		"ok"::global_success,
+        		"transmitted_transport_km"::quantity_sent
         	];
 			
 			return prod_info;
