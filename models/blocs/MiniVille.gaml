@@ -79,6 +79,7 @@ species mini_ville {
 
 	// vvv TRANSPORT BLOC VEHICLES vvv
 	// DATA :
+	bool is_setup <- false;
 	list<string> vehicles <- ["taxi", "minibus", "bicycle"];
 	map<string, map<string, float>> vehicle_data <- [
 		// initial quantity
@@ -118,8 +119,8 @@ species mini_ville {
 		// the 49 comes from Urbanism creating only where the GIS cities are, and not the rest.
 		float miniville_difference_multiplier <- 6500.0 / 49.0;
 		loop v over:vehicles{
-			write vehicle_data[v];
-			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * miniville_difference_multiplier);
+//			write vehicle_data[v];
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * (population_count/10000));
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];
@@ -162,7 +163,7 @@ species mini_ville {
 		// debug log
 		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
 		
-		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
+//		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
 	}
 	
 	// Register an order (does NOT consume resources).

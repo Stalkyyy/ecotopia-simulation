@@ -48,7 +48,7 @@ global{
 	
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
-			"quantity"::6500, // number of vehicles available in france
+			"quantity"::3000, // number of vehicles available in france
 			"capacity"::12000, // on average, not always full (kg)
 			"capacity_std"::500, // varies slightly between months, there can be more trucks on high demand seasons (christmas)
 			"consumption"::1, // (kWh/km)
@@ -314,13 +314,20 @@ species transport parent:bloc{
 	    	tick_vehicle_available_T["truck"] <- number_of_vehicles["truck"];
 	    	tick_vehicle_available_T["train"] <- number_of_vehicles["train"];
 	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // total number of vehicles left available
-	    	tick_vehicles_created_T <- vehicles_created;                   // number of vehicles created this tick 
+//	    	tick_vehicles_created_T <- vehicles_created;                   // number of vehicles created this tick 				// buggy if we pass it directly (passage through reference ? -> the reset() call of number_of_vehicles_available seems to affect the copy as well)
+	    	loop v over: vehicles{
+	    		tick_vehicles_created_T[v] <- vehicles_created[v];
+	    	}
 	    	tick_unfufilled_ressources_T <- tick_unfufilled_ressources;		// all ressources missing/unproduced
 	    	
 	    	
 	    	float transport_completed <- 0.0;
 	    	float transport_penury <- 0.0;
 	    	loop r over: production_outputs_T{
+	    		if r = "km/kg_scale_2"{
+	    			// different scale -> don't take into account for population, and it's already accounted indirectly by not porviding enough transport to agricultural bloc.
+	    			continue;
+	    		}
 	    		transport_completed <- transport_completed + tick_production_T[r];
 	    		transport_penury <- transport_penury + tick_unfufilled_ressources_T[r];
 	    	}
@@ -572,6 +579,15 @@ species transport parent:bloc{
 	action update_city_vehicles(list<mini_ville> cities) {
 		list<string> city_vehicles <- ["taxi", "minibus", "bicycle"];
 		loop c over: cities {
+			// this is not ideal but it seems like the demography bloc initializes the population count of the city only AFTER tick 1, so until then we can't setup the city's initial vehicules and age them
+			if not c.is_setup{
+				if c.population_count <= 0.0 {
+					continue;
+				}
+				ask c{
+					do setup_vehicles;
+				}
+			}
 			// update the age of the city vehicles
     		loop v over:city_vehicles{
 				// NOTE : removed the variation in aging at each tick because it would be super computationally heavy to loop through all lifetime ticks for every single city (went back to the original code where we just remove the last (oldest) entry and add a new entry with 0 vehicles (O(1)))
@@ -1008,8 +1024,7 @@ experiment run_transport type: gui {
 //		            if (m_distrib != nil) { data "Minibuses" value: reverse(m_distrib) style: bar color: #yellow; }
 //		            if (t_distrib != nil) { data "Trucks" value: reverse(t_distrib) style: bar color: #red; }
 //		        }
-//		    }
-			
+//		    }	
 			
 			// ROW 2
 			chart "Energy and Cotton used" type: series size: {0.5,0.5} position: {-0.5, 0.25} y_log_scale: true {
@@ -1028,7 +1043,7 @@ experiment run_transport type: gui {
 			    }
 			}
 			
-		    chart "completion" type: series size: {0.5, 0.5} position: {1, 0.25}  y_log_scale:true {
+		    chart "completion Population ressources" type: series size: {0.5, 0.5} position: {1, 0.25}  y_log_scale:true {
 		        transport t_agent <- first(transport);
 		        data "completion" value: completion;
 		    }
@@ -1048,7 +1063,6 @@ experiment run_transport type: gui {
 //		            if (distrib != nil) { data "Bicycles" value: reverse(distrib) style: bar color: #pink; }
 //		        }
 //		    }
-			
 			
 			// ROW 3
 			chart "Total Vehicles" type: series size: {0.5,0.5} position: {-0.5, 0.75} y_log_scale:true {
