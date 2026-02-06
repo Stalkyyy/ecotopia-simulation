@@ -180,7 +180,7 @@ species coordinator{
 		loop b over: blocs{
 			do register_bloc(b); //register the bloc
 		}
-		write "registered blocs : "+registered_blocs;
+		//write "registered blocs : "+registered_blocs;
 		if length(scheduling) = 0{
 			scheduling <- blocs collect each.name; // set default scheduling order
 		}
