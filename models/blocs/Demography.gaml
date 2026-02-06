@@ -176,6 +176,9 @@ species residents parent:bloc{
 			// Update seasonal mortality coefficient based on current month (0=Jan, 11=Dec)
 			int current_month <- int(cycle mod 12);
 			coeff_death_seasonal <- seasonal_death_coeffs[current_month];
+				
+				// Refresh mortality coefficients from actual consumption BEFORE happiness
+				do recompute_resource_coeffs;
 			
 			do update_happiness_trend;
 			do update_births;
@@ -301,69 +304,44 @@ species residents parent:bloc{
     
     action update_food_demand {
 		float target_intake <- 2000.0;
-		// Use local variable for intake to avoid scope confusion
 		float current_intake <- calorie_intake;
-				// If population has more children, consumption per capita will naturally be lower.
-		// We should target the WEIGHTED REQUIRED INTAKE, not the adult 2200.
-		// Approximations:
-		// 0-18 (kids): ~1400 kcal avg
-		// 18-60 (adults): ~2200 kcal avg
-		// 60+ (elderly): ~1800 kcal avg
-		// Calculate simple weighted average based on age group counts in sample
+		
+		// Weighted target by age structure
 		int nb_kids <- individual count (each.age <= 18);
 		int nb_adults <- individual count (each.age > 18 and each.age <= 60);
 		int nb_elderly <- individual count (each.age > 60);
 		int total_sample <- nb_kids + nb_adults + nb_elderly;
-		
 		float weighted_target <- 2200.0;
 		if (total_sample > 0) {
 			weighted_target <- ((nb_kids * 1400.0) + (nb_adults * 2200.0) + (nb_elderly * 1800.0)) / total_sample;
 		}
-		
-		// Adjust target for dynamic demand
 		target_intake <- weighted_target;
+		
 		ask consumer {
-			// If population is starving/hungry (intake too low)
-			if (current_intake < target_intake) {
-				// Increase demand
-				float boost <- 1.05;
-				if (current_intake < target_intake * 0.8) { boost <- 1.1; } // Crisis speed up
-				
-				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * boost;
-				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * boost;
-			}
-			// If population has excess food (intake too high - obesity risk)
-			else if (current_intake > target_intake + 200) {
-				// Decrease demand - reduce faster if way over limit
-				float reduce <- 0.95;
-				if (current_intake > target_intake + 1000) { reduce <- 0.90; }
-				
-				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * reduce;
-				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * reduce;
-			}
-			
-			// Clamp to reasonable limits
-			// Min: 1kg meat, 5kg veg. Max: 50kg meat, 100kg veg
-			resources_to_consume["kg_meat"] <- max(1.0, min(50.0, resources_to_consume["kg_meat"]));
-			resources_to_consume["kg_vegetables"] <- max(5.0, min(100.0, resources_to_consume["kg_vegetables"]));
+			// Smooth proportional controller to avoid runaway spikes
+			float ratio <- target_intake / max(1.0, current_intake);
+			// If starving (current_intake very low) cap the boost
+			float factor <- ratio ^ 0.35;
+			factor <- min(1.15, max(0.85, factor));
+			resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * factor;
+			resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * factor;
+			// Clamp to realistic monthly per-person bounds to prevent overshoot
+			resources_to_consume["kg_meat"] <- max(4.0, min(25.0, resources_to_consume["kg_meat"]));
+			resources_to_consume["kg_vegetables"] <- max(8.0, min(50.0, resources_to_consume["kg_vegetables"]));
 		}
 	}
 	
 	action update_water_demand {
-		float target_water <- 50.0; // 50L/month ~ 1.6L/day
+		float target_water <- 55.0; // L/month/person (~1.8 L/day)
 		float current_water <- last_consumed["L water"] / max(1, total_pop);
 		
 		ask consumer {
-			if (current_water < target_water) {
-				// We don't have enough water -> ask for more
-				resources_to_consume["L water"] <- resources_to_consume["L water"] * 1.05;
-			} else if (current_water > target_water + 20.0) {
-				// We have too much water -> ask for less
-				resources_to_consume["L water"] <- resources_to_consume["L water"] * 0.98;
-			}
-			
-			// Clamp
-			resources_to_consume["L water"] <- max(10.0, min(200.0, resources_to_consume["L water"]));
+			float ratio <- target_water / max(1.0, current_water);
+			float factor <- ratio ^ 0.35;
+			factor <- min(1.12, max(0.9, factor));
+			resources_to_consume["L water"] <- resources_to_consume["L water"] * factor;
+			// Clamp tighter to avoid swings
+			resources_to_consume["L water"] <- max(20.0, min(90.0, resources_to_consume["L water"]));
 		}
 	}
 	
@@ -384,6 +362,16 @@ species residents parent:bloc{
 			// Clamp: Never ask for less than 1.0 (everyone needs a home), max 2.0 (panic mode)
 			resources_to_consume["total_housing_capacity"] <- max(1.0, min(2.0, resources_to_consume["total_housing_capacity"]));
 		}
+	}
+
+	/* recompute mortality coefficients based on actual delivered resources */
+	action recompute_resource_coeffs {
+		do get_calorie_intake;
+		do mortality_by_calories;
+		do get_water_intake;
+		do mortality_by_water;
+		do get_housing_deficit;
+		do mortality_by_housing;
 	}
 	
 	/* initialize the population */
@@ -631,17 +619,20 @@ species residents parent:bloc{
 
 		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);
 		
-		// Update global happiness index (sluggishly)
+		// Update global happiness index
 		float target_happiness <- 0.5;
 		if (total_stress > 0) {
 			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
+			// Under stress: drop fast
+			global_happiness_index <- (global_happiness_index * 0.6) + (target_happiness * 0.4);
 		} else if (total_bonus > 0) {
-			// If all bonuses met, target rises
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.12)); // Slightly reduced multiplier to account for transport
+			// If all bonuses met, target rises slowly
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.12));
+			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
+		} else {
+			// Neutral state, drift slowly to center
+			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
 		}
-		
-		// Move towards target (inertia)
-		global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
 
 		// Adjust birth rate based on happiness
 		// If happy (>0.6), birth coefficient rises over time
