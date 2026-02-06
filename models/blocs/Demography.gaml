@@ -148,8 +148,6 @@ species residents parent:bloc{
 	string name <- "residents";
 	bool enabled <- true; // true to activate the demography (births, deaths), else false.
 	
-	
-	
 	residents_producer producer <- nil;
 	residents_consumer consumer <- nil;
 		
@@ -178,6 +176,9 @@ species residents parent:bloc{
 			// Update seasonal mortality coefficient based on current month (0=Jan, 11=Dec)
 			int current_month <- int(cycle mod 12);
 			coeff_death_seasonal <- seasonal_death_coeffs[current_month];
+				
+				// Refresh mortality coefficients from actual consumption BEFORE happiness
+				do recompute_resource_coeffs;
 			
 			do update_happiness_trend;
 			do update_births;
@@ -233,19 +234,25 @@ species residents parent:bloc{
     }
     
     action population_activity(list<human> pop) {
-        ask pop{ // execute the consumption behavior of the population
-            ask myself.residents_consumer{
-                do consume(myself); // individuals consume energy
-            }
-        }
-         
-        ask residents_consumer{ // produce the required quantities
-            ask residents_producer{
-                loop c over: myself.consumed.keys{
-                    do produce("population", [c::myself.consumed[c]]);
-                }
-            } 
-        }
+	    // 1) Build the demand side (what the population wants this tick)
+	    ask pop{ // execute the consumption behavior of the population
+	        ask myself.residents_consumer{
+	            do consume(myself); // build per-capita demand based on age
+	        }
+	    }
+
+	    // 2) Aggregate demand and request suppliers
+	    map<string, float> demand <- [];
+	    ask residents_consumer { demand <- copy(demanded); }
+
+	    ask residents_producer {
+	        do produce("population", demand);
+	    }
+
+	    // 3) Record what was REALLY delivered (may be lower than demand)
+	    map<string, float> delivered <- [];
+	    ask residents_producer { delivered <- copy(last_delivery); }
+	    ask residents_consumer { do set_actual_consumption(delivered); }
     }
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -285,9 +292,9 @@ species residents parent:bloc{
 		if (cycle mod 12 = 0) { // once a year
 			int total_mapped_pop <- 0; 
 			ask cities {
-				total_mapped_pop <- total_mapped_pop + int(population_count);
 				// Debug log every 100 mini_villes
 				if (index mod 100 = 0) {
+					total_mapped_pop <- total_mapped_pop + int(population_count);
 					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
 				}
 			}
@@ -297,69 +304,49 @@ species residents parent:bloc{
     
     action update_food_demand {
 		float target_intake <- 2000.0;
-		// Use local variable for intake to avoid scope confusion
-		float current_intake <- calorie_intake;
-				// If population has more children, consumption per capita will naturally be lower.
-		// We should target the WEIGHTED REQUIRED INTAKE, not the adult 2200.
-		// Approximations:
-		// 0-18 (kids): ~1400 kcal avg
-		// 18-60 (adults): ~2200 kcal avg
-		// 60+ (elderly): ~1800 kcal avg
-		// Calculate simple weighted average based on age group counts in sample
+		float current_intake <- max(1.0, calorie_intake); // Prevent division by zero
+
+		// Weighted target by age structure
 		int nb_kids <- individual count (each.age <= 18);
 		int nb_adults <- individual count (each.age > 18 and each.age <= 60);
 		int nb_elderly <- individual count (each.age > 60);
 		int total_sample <- nb_kids + nb_adults + nb_elderly;
-		
 		float weighted_target <- 2200.0;
 		if (total_sample > 0) {
 			weighted_target <- ((nb_kids * 1400.0) + (nb_adults * 2200.0) + (nb_elderly * 1800.0)) / total_sample;
 		}
-		
-		// Adjust target for dynamic demand
 		target_intake <- weighted_target;
+
 		ask consumer {
-			// If population is starving/hungry (intake too low)
-			if (current_intake < target_intake) {
-				// Increase demand
-				float boost <- 1.05;
-				if (current_intake < target_intake * 0.8) { boost <- 1.1; } // Crisis speed up
-				
-				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * boost;
-				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * boost;
-			}
-			// If population has excess food (intake too high - obesity risk)
-			else if (current_intake > target_intake + 200) {
-				// Decrease demand - reduce faster if way over limit
-				float reduce <- 0.95;
-				if (current_intake > target_intake + 1000) { reduce <- 0.90; }
-				
-				resources_to_consume["kg_meat"] <- resources_to_consume["kg_meat"] * reduce;
-				resources_to_consume["kg_vegetables"] <- resources_to_consume["kg_vegetables"] * reduce;
-			}
-			
-			// Clamp to reasonable limits
-			// Min: 1kg meat, 5kg veg. Max: 50kg meat, 100kg veg
-			resources_to_consume["kg_meat"] <- max(1.0, min(50.0, resources_to_consume["kg_meat"]));
-			resources_to_consume["kg_vegetables"] <- max(5.0, min(100.0, resources_to_consume["kg_vegetables"]));
+			// Smooth proportional controller with recovery mechanism
+			float ratio <- target_intake / current_intake;
+			float factor <- ratio ^ 0.35;
+			factor <- min(1.15, max(0.85, factor));
+
+			// Ensure minimum demand to avoid starvation
+			resources_to_consume["kg_meat"] <- max(4.0, resources_to_consume["kg_meat"] * factor);
+			resources_to_consume["kg_vegetables"] <- max(8.0, resources_to_consume["kg_vegetables"] * factor);
+
+			// Clamp to realistic monthly per-person bounds
+			resources_to_consume["kg_meat"] <- min(25.0, resources_to_consume["kg_meat"]);
+			resources_to_consume["kg_vegetables"] <- min(50.0, resources_to_consume["kg_vegetables"]);
 		}
 	}
 	
 	action update_water_demand {
-		float target_water <- 50.0; // 50L/month ~ 1.6L/day
-		float current_water <- last_consumed["L water"] / max(1, total_pop);
-		
+		float target_water <- 55.0; // L/month/person (~1.8 L/day)
+		float current_water <- max(1.0, last_consumed["L water"] / max(1, total_pop)); // Prevent division by zero
+
 		ask consumer {
-			if (current_water < target_water) {
-				// We don't have enough water -> ask for more
-				resources_to_consume["L water"] <- resources_to_consume["L water"] * 1.05;
-			} else if (current_water > target_water + 20.0) {
-				// We have too much water -> ask for less
-				resources_to_consume["L water"] <- resources_to_consume["L water"] * 0.98;
-			}
-			
-			// Clamp
-			resources_to_consume["L water"] <- max(10.0, min(200.0, resources_to_consume["L water"]));
+			float ratio <- target_water / current_water;
+			float factor <- ratio ^ 0.35;
+			factor <- min(1.12, max(0.9, factor));
+
+			// Ensure minimum demand to avoid dehydration
+			resources_to_consume["L water"] <- max(20.0, resources_to_consume["L water"] * factor);
+
+			// Clamp tighter to avoid swings
+			resources_to_consume["L water"] <- min(90.0, resources_to_consume["L water"]);
 		}
 	}
 	
@@ -380,6 +367,16 @@ species residents parent:bloc{
 			// Clamp: Never ask for less than 1.0 (everyone needs a home), max 2.0 (panic mode)
 			resources_to_consume["total_housing_capacity"] <- max(1.0, min(2.0, resources_to_consume["total_housing_capacity"]));
 		}
+	}
+
+	/* recompute mortality coefficients based on actual delivered resources */
+	action recompute_resource_coeffs {
+		do get_calorie_intake;
+		do mortality_by_calories;
+		do get_water_intake;
+		do mortality_by_water;
+		do get_housing_deficit;
+		do mortality_by_housing;
 	}
 	
 	/* initialize the population */
@@ -499,7 +496,7 @@ species residents parent:bloc{
 	action mortality_by_water{
 		// MIN/MAX tuning parameters for sensitivity
 		float min_coeff <- 0.95;
-		float max_coeff <- 1.5;
+		float max_coeff <- 2.0;
 
 		// First step protection
 		if (cycle <= 1) {
@@ -610,47 +607,47 @@ species residents parent:bloc{
 	/* updates global happiness based on resource satisfaction */
 	action update_happiness_trend {
 		// Calculate current stress based on mortality coefficients (deviation from 1.0)
-		// Ideal state: coeffs are < 1.0 (bonus from good conditions)
 		float food_stress <- max(0.0, coeff_death_cal - 1.05); // Tolerance up to 1.05 before stress
 		float water_stress <- max(0.0, coeff_death_water - 1.05);
 		float housing_stress <- max(0.0, coeff_death_housing - 1.05);
 		float total_stress <- food_stress + water_stress + housing_stress;
 		
 		// Calculate satisfaction bonuses
-		// Changed to <= 1.01 to include "neutral/met needs" state as positive contribution
 		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
 		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
 		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
-		float total_bonus <- food_bonus + water_bonus + housing_bonus;
+		float transport_completion <- producer.get_transport_completion();
+		write "[Demography] Transport Completion: " + transport_completion;
+		float transport_bonus <- (transport_completion >= 0.8) ? 0.5 : (transport_completion - 0.5); // Bonus if good, penalty if bad
+
+		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);
 		
-		// Update global happiness index (sluggishly)
+		// Update global happiness index
 		float target_happiness <- 0.5;
 		if (total_stress > 0) {
-			target_happiness <- max(0.0, 0.5 - (total_stress * 2.0));
+			target_happiness <- max(0.4, 0.5 - (total_stress * 1.8));
+			global_happiness_index <- (global_happiness_index * 0.7) + (target_happiness * 0.3);
 		} else if (total_bonus > 0) {
-			// If all 3 bonuses met, target is 0.5 + 0.45 = 0.95
-			// If 2 bonuses met, target is 0.5 + 0.30 = 0.80
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15));
+			// If all bonuses met, target rises slowly
+			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15)); // Faster rise
+			global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
+		} else {
+			// Neutral state, drift slowly to center
+			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
 		}
-		
-		// Move towards target (inertia)
-		global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
 
 		// Adjust birth rate based on happiness
-		// If happy (>0.6), birth coefficient rises over time
-		// If unhappy (<0.4), it drops
 		if (global_happiness_index > 0.6) {
-			coeff_birth_happiness <- coeff_birth_happiness + 0.002;
+			coeff_birth_happiness <- coeff_birth_happiness + 0.001; // Slower accumulation
 		} else if (global_happiness_index < 0.4) {
-			coeff_birth_happiness <- coeff_birth_happiness - 0.005;
+			coeff_birth_happiness <- coeff_birth_happiness - 0.003; // Faster drop
 		} else {
-			// drift back to 1.0 if neutral
 			if (coeff_birth_happiness > 1.0) { coeff_birth_happiness <- coeff_birth_happiness - 0.001; }
 			else if (coeff_birth_happiness < 1.0) { coeff_birth_happiness <- coeff_birth_happiness + 0.001; }
 		}
 		
 		// Clamp birth coefficient
-		coeff_birth_happiness <- max(0.5, min(1.8, coeff_birth_happiness));
+		coeff_birth_happiness <- max(0.5, min(1.5, coeff_birth_happiness));
 	}
 
 	/* apply deaths*/
@@ -689,12 +686,13 @@ species residents parent:bloc{
 	
 	
 	
-	species residents_producer parent:production_agent {
+		species residents_producer parent:production_agent {
 		map<string, bloc> external_producers;
 				
 		map<string, float> tick_resources_used <- ["kg_meat"::0.0, "kg_vegetables"::0.0, "L water"::0.0, "total_housing_capacity"::0.0];
 		map<string, float> tick_production <- [];
 		map<string, float> tick_emissions <- [];
+		map<string, float> last_delivery <- [];
 		
 		map<string, float> get_tick_inputs_used{		
 			return tick_resources_used;
@@ -710,6 +708,7 @@ species residents parent:bloc{
 			loop r over: tick_resources_used.keys{
 				tick_resources_used[r] <- 0.0;
 			}
+			last_delivery <- [];
 		}
 
 		init{
@@ -722,33 +721,70 @@ species residents parent:bloc{
 		 */
 		map<string, unknown> produce(string bloc_name, map<string, float> demand){
 			bool ok <- true;
-			//write "[DEMOGRAPHY PRODUCER] demand received: " + demand;
+			map<string, float> delivered <- [];
+
 			loop r over: demand.keys{
 				float qty <- demand[r];
+				float received <- 0.0;
+				bool resource_ok <- true;
+
 				if(external_producers.keys contains r){
-					// bool available <- external_producers[r].producer.produce([r::qty]);
-					// if(not available){
-					// 	 ok <- false;
-					// }
-					
-					map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
-					if not bool(info["ok"]) {
-						ok <- false;
+					if(r = "total_housing_capacity"){
+						// Housing capacity is provided as an output metric; don't "order" it, just read it.
+						map<string, float> outputs <- external_producers[r].producer.get_tick_outputs_produced();
+						if("total_housing_capacity" in outputs.keys) {
+							received <- outputs["total_housing_capacity"];
+						} else {
+							received <- 0.0;
+							resource_ok <- false;
+						}
+					} else {
+						map<string, unknown> info <- external_producers[r].producer.produce("population", [r::qty]);
+						if ("ok" in info.keys and not bool(info["ok"])) {
+							resource_ok <- false;
+						}
+
+						// Extract actually transmitted quantities when provided by the supplier
+						if(r = "kg_meat" and "transmitted_meat" in info.keys){
+							received <- float(info["transmitted_meat"]);
+						} else if(r = "kg_vegetables" and "transmitted_vegetables" in info.keys){
+							received <- float(info["transmitted_vegetables"]);
+						} else if(r = "kg_cotton" and "transmitted_cotton" in info.keys){
+							received <- float(info["transmitted_cotton"]);
+						} else if(r = "L water" and "transmitted_water" in info.keys){
+							received <- float(info["transmitted_water"]);
+						} else if(r = "kWh energy" and "transmitted_kwh" in info.keys){
+							received <- float(info["transmitted_kwh"]);
+						} else if(r = "m² land" and "transmitted_land" in info.keys){
+							received <- float(info["transmitted_land"]);
+						} else {
+							received <- qty;
+						}
 					}
+				} else {
+					resource_ok <- false;
+					received <- 0.0;
 				}
+
 				if(not (tick_resources_used.keys contains r)){
 					tick_resources_used[r] <- 0.0;
 				}
-				tick_resources_used[r] <- tick_resources_used[r] + qty;
-				//write "DEMAND " + r + " : " + demand[r] + "[" + ok + "]";  
+				tick_resources_used[r] <- tick_resources_used[r] + received;
+				delivered[r] <- received;
+
+				if(not resource_ok){
+					ok <- false;
+				}
 			}
-			
+
+			last_delivery <- copy(delivered);
+
 			map<string, unknown> prod_info <- [
-        		"ok"::ok
+        		"ok"::ok,
+        		"delivered"::delivered
         	];
-			
+
 			return prod_info;
-			
 		}
 		
 		action set_supplier(string product, bloc bloc_agent){
@@ -756,9 +792,10 @@ species residents parent:bloc{
 		}
 	}
 
-	species residents_consumer parent:consumption_agent{
-    
+		species residents_consumer parent:consumption_agent{
+
         map<string, float> consumed <- [];
+        map<string, float> demanded <- [];
 		// Initial demand set to ~1500-1600 kcal/day to start (15kg meat + 25kg veg)
 		// 15*2500 + 25*500 = 37500 + 12500 = 50000 / 30 = 1666 kcal/day
 		map<string, float> resources_to_consume <- ["kg_meat"::10.0, "kg_vegetables"::15.0, "L water"::50.0, "total_housing_capacity"::1.0];
@@ -767,23 +804,27 @@ species residents parent:bloc{
             return copy(consumed);
         }
         
-        init{
-            loop c over: production_inputs{
-                consumed[c] <- 0;
-            }
-        }
-        
-        action reset_tick_counters{
-            loop c over: consumed.keys{
+		init{
+			loop c over: production_inputs{
 				consumed[c] <- 0;
-            }
-        }
+				demanded[c] <- 0;
+			}
+		}
+        
+		action reset_tick_counters{
+			loop c over: consumed.keys{
+				consumed[c] <- 0;
+			}
+			loop c over: demanded.keys{
+				demanded[c] <- 0;
+			}
+		}
         
         /**
          * Calculate monthly energy consumption per individual
          * Consumption varies slightly
          */
-        action consume(human h){
+		action consume(human h){
             // float monthly_kwh <- gauss(human_cfg["avg_kwh_per_person"], human_cfg["std_kwh_per_person"]);
             // float individual_kwh <- max(human_cfg["min_kwh_conso"], min(human_cfg["monthly_kwh"], human_cfg["max_kwh_conso"]));
 			
@@ -799,14 +840,21 @@ species residents parent:bloc{
 			float individual_kg_vegetables <- resources_to_consume["kg_vegetables"] * modifier;
             float individual_L <- resources_to_consume["L water"] * modifier;
 			// Housing is typically 1 unit per person regardless of age (or per household, but simplifying)
-			float individual_housing <- resources_to_consume["total_housing_capacity"]; 
+			float individual_housing <- resources_to_consume["total_housing_capacity"];
 
-            // Add to total consumption
-            consumed["kg_meat"] <- consumed["kg_meat"] + individual_kg_meat * nb_humans_per_agent;
-            consumed["kg_vegetables"] <- consumed["kg_vegetables"] + individual_kg_vegetables * nb_humans_per_agent;
-            consumed["L water"] <- consumed["L water"] + individual_L * nb_humans_per_agent;
-            consumed["total_housing_capacity"] <- consumed["total_housing_capacity"] + individual_housing * nb_humans_per_agent;
+	            // Add to aggregated demand (real population scale)
+	            demanded["kg_meat"] <- demanded["kg_meat"] + individual_kg_meat * nb_humans_per_agent;
+	            demanded["kg_vegetables"] <- demanded["kg_vegetables"] + individual_kg_vegetables * nb_humans_per_agent;
+	            demanded["L water"] <- demanded["L water"] + individual_L * nb_humans_per_agent;
+	            demanded["total_housing_capacity"] <- demanded["total_housing_capacity"] + individual_housing * nb_humans_per_agent;
         }
+
+		action set_actual_consumption(map<string, float> delivered){
+			// Record what was really received after supplier shortages
+			loop r over: delivered.keys{
+				consumed[r] <- delivered[r];
+			}
+		}
     }
 
 	/* Get multiplier for resource needs based on age */
@@ -986,9 +1034,9 @@ chart "Births and deaths (cumulative)" type: series size: {0.33,0.33} position: 
 				data "total_deaths" value: deaths color: #black;
 			}
 chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0.66} {
-				// (1 + growth_rate) where 1.0 is stable. >1 growing, <1 shrinking.
-				data "growth_factor" value: (total_pop > 0) ? (1.0 + ((birth_rate - death_rate) / total_pop)) : 1.0 color: #blue;
-				data "replacement_level" value: 1.0 color: #black;
+				// Show net growth rate percentage (0% = stable)
+				data "Growth Rate %" value: (total_pop > 0) ? ((birth_rate - death_rate) / total_pop) * 100.0 : 0.0 color: #blue;
+				data "Stable (0%)" value: 0.0 color: #black;
             }
 
             chart "Calorie mortality coefficient" type: series size: {0.33,0.33} position: {0.33, 0} {

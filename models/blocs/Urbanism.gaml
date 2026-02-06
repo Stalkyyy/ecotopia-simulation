@@ -142,7 +142,7 @@ species urbanism parent: bloc{
 	}
 
 	list<string> get_output_resources_labels{
-		// expose aggregate housing capacity (REAL persons) for Demography
+		// expose aggregate housing capacity (REAL persons, already scaled by alpha_mv) for Demography
 		return ["total_housing_capacity"];
 	}
 
@@ -276,7 +276,7 @@ species urbanism parent: bloc{
 
 		// publish capacity (REAL persons)
 		ask producer {
-			tick_outputs["total_housing_capacity"] <- total_capacity;
+			tick_outputs["total_housing_capacity"] <- capacity_real_scaled; // real persons capacity (scaled)
 		}
 
 		// collect for charts/logs
