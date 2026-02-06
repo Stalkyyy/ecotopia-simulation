@@ -427,14 +427,19 @@ species transport parent:bloc{
 			}
 			// ask for cotton
 			float required_cotton <- new_quantity * vehicle_data[type]["plastic_weight"];
+			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
 				if verbose_shortage {
 					write("[TRANSPORT] Tried to create " + new_quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
 				}
+				// check how much cotton we received and work with that
+				cotton_received <- float(infoAgri["transmitted_cotton"]);
+				float cotton_penury <- required_cotton - cotton_received;
+				new_quantity <- int(floor(cotton_received / required_cotton));
 				// penury :
-				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + required_cotton;
-				success <- false;
+				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + cotton_penury;
+//				success <- false;
 			}
 			if success {
 				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + (energy_received);
@@ -532,14 +537,19 @@ species transport parent:bloc{
 			
 			// ask for cotton
 			float required_cotton <- new_quantity * vehicle_data[type]["plastic_weight"];
+			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
 				if verbose_shortage {
-					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
-					}
+					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but only received "+float(infoAgri["transmitted_cotton"])+", but got a \"False\" return");
+				}
+				// check how much cotton we received and work with that
+				cotton_received <- float(infoAgri["transmitted_cotton"]);
+				float cotton_penury <- required_cotton - cotton_received;
+				new_quantity <- int(floor(cotton_received / required_cotton));
 				// penury :
-				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + required_cotton;
-				success <- false;
+				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + cotton_penury;
+//				success <- false;
 			}
 			if success {
 				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_received;
