@@ -426,12 +426,21 @@ species transport parent:bloc{
 				float energy_penury <- required_energy - energy_received;
 //				float energy_received_ratio <- max(min((energy_received/required_energy),1.0),0.0);
 				new_quantity <- int(floor(energy_received / total_energy_per_vehicle));
+				if verbose_Transport {
+					write "[TRANSPORT] Creating " + type + ", new_quantity: " + new_quantity + " = int(floor(energy_received=" + energy_received + " / total_energy_per_vehicle=" + total_energy_per_vehicle + "= ( " + vehicle_data[type]["creation_energy"] + " + " + vehicle_data[type]["plastic_weight"] + " * " + kWh_per_kg_plastic + " ) )";
+				}
 				
 				// penury :
 				tick_unfufilled_ressources["kWh energy"] <- tick_unfufilled_ressources["kWh energy"] + energy_penury;
 			} else {
 				energy_received <- required_energy;
 			}
+			if (new_quantity <= 0) {
+				if verbose_Transport { write "[TRANSPORT] new_quantity <= 0, returning 0";}
+				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_received;
+				tick_unfufilled_ressources[type] <- tick_unfufilled_ressources[type] + quantity;
+				return 0; 
+			} 
 			// ask for cotton
 			float required_cotton <- new_quantity * vehicle_data[type]["plastic_weight"];
 			float cotton_received <- 0.0;
