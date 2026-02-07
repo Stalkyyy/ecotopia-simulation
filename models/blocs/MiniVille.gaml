@@ -1,18 +1,13 @@
 /**
 * Name: Mini-villes
 * Shared core entity used by all blocs.
-*
-* v1 focus:
-* - mini-villes are fixed in number (created at setup from a shapefile / city layer)
-* - housing is aggregated inside each mini-ville (no building agents)
-* - construction is a simple pipeline: order -> waiting resources -> building (time) -> commit
 */
 
 model MiniVille
 
 global{
 	bool verbose_MiniVille <- false;
-	// Mini-ville initialization (v1: fixed number, no creation/destruction)
+	// Mini-ville initialization
 	int mini_ville_count <- 49;
 	float total_area_per_ville <- 2e6; // m2 per mini-ville
 	float buildable_ratio <- 0.4;
@@ -25,7 +20,7 @@ global{
 // Keep consistent with Urbanism: modular units use more surface than wood (multiplier)
 float modular_surface_factor <- 1.15;
 
-// --- Decay (housing lifecycle v0) defaults ---
+// --- Decay defaults ---
 float annual_decay_rate_default <- 0.002;      // per year
 int decay_period_cycles_default <- 12;         // cycles between decay events
 float decay_land_recovery_fraction_default <- 1.0; // 1.0 = fully recover land on decay
@@ -49,9 +44,6 @@ bool debug_decay_log_default <- false;
 }
 
 /**
- * Mini-ville (v1): fixed set, aggregate land-use budgets and housing stock.
- * No explicit building agents in this version.
- *
 * Construction pipeline fields are used by the Urbanism bloc:
 * - construction_state in {"idle","waiting_resources","building"}
 * - pending_* describe the current order
@@ -362,7 +354,7 @@ pending_wood_units <- max(0, wood_units);
 	}
 
 
-// --- Housing decay (lifecycle v0): remove a small fraction of the stock periodically ---
+// --- Housing decay ---
 reflex decay_and_reset {
     // reset diagnostics each cycle
     tick_units_demolished <- 0;

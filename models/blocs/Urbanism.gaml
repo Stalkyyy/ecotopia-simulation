@@ -19,8 +19,6 @@ global{
 
 	map<string, int> init_units <- ["wood"::0, "modular"::0]; // will be synced from mini-villes
 
-	// IMPORTANT: use the SAME surface notion as mini-villes (area_per_unit), otherwise you create fake land gaps.
-	// In v1, we use a single footprint per unit. Later, you can refine per typology.
 	map<string, float> surface_per_unit <- ["wood"::area_per_unit_default, "modular"::(area_per_unit_default * modular_surface_factor)]; // m² per unit // m² per unit
 
 	// Resource needs per unit (defaults, to be refined with data)
@@ -47,7 +45,7 @@ global{
 	int max_builds_started_per_tick <- 50; // cap number of mini-villes that can transition to 'building' per tick
 	int builds_started_count_tick <- 0; // debug + gating for max_builds_started_per_tick
 
-	// Two-phase diagnostics (no API changes)
+	// Two-phase diagnostics 
 	int tick_can_checks <- 0;
 	int tick_can_fails <- 0;
 	int tick_commit_fails <- 0;
@@ -87,7 +85,7 @@ global{
 	float debug_scarcity_multiplier <- 5.0; // multiply resource demands by this factor when debug_scarcity_enabled=true
 
 
-// --- Decay (housing lifecycle v0) controls (annual rate, applied every N cycles) ---
+// --- Decay controls (annual rate, applied every N cycles) ---
 float decay_rate_annual_param <- 0.002;     // e.g. 0.002 = 0.2% per year
 int decay_period_cycles_param <- 12;        // if 1 tick = 1 month, 12 => yearly decay
 float decay_land_recovery_fraction_param <- 1.0; // 1.0 = fully recover land on decay
