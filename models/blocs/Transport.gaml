@@ -436,7 +436,7 @@ species transport parent:bloc{
 				energy_received <- required_energy;
 			}
 			if (new_quantity <= 0) {
-				if verbose_Transport { write "[TRANSPORT] new_quantity <= 0, returning 0";}
+				if verbose_Transport { write "[TRANSPORT] create_new_vehicles new_quantity <= 0, returning 0";}
 				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_received;
 				tick_unfufilled_ressources[type] <- tick_unfufilled_ressources[type] + quantity;
 				return 0; 
@@ -549,6 +549,12 @@ species transport parent:bloc{
 				tick_unfufilled_ressources["kWh energy"] <- tick_unfufilled_ressources["kWh energy"] + energy_penury;
 			} else {
 				energy_received <- required_energy;
+			}
+			if (new_quantity <= 0) {
+				if verbose_Transport { write "[TRANSPORT] create_new_vehicles_city new_quantity <= 0, returning 0";}
+				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_received;
+				tick_unfufilled_ressources[type] <- tick_unfufilled_ressources[type] + quantity;
+				return 0;
 			}
 			
 			// ask for cotton
