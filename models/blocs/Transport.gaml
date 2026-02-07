@@ -13,8 +13,22 @@ import "../API/API.gaml"
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
 global{
+	bool verbose_Transport <- false;
 	float completion <- 1.0;
-	bool verbose_shortage <- false;
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_transport <- [
+		
+		// From FranceTransportSimulation: Scale 1 / 2
+		"trains_required"::50960,
+		"train_km_month_scale1"::53338799,
+		"train_km_month_scale2"::7557975,
+		
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425
+	];
 
 
 	/* Setup */
@@ -34,7 +48,7 @@ global{
 	
 	map<string, map<string, float>> vehicle_data <- [
 		"truck"::[
-			"quantity"::6500, // number of vehicles available in france
+			"quantity"::3000, // number of vehicles available in france
 			"capacity"::12000, // on average, not always full (kg)
 			"capacity_std"::500, // varies slightly between months, there can be more trucks on high demand seasons (christmas)
 			"consumption"::1, // (kWh/km)
@@ -45,7 +59,7 @@ global{
 			"distance_max_per_tick"::3508 // reasonable max distance traveled per month (km)
 		],
 		"train"::[
-			"quantity"::19310,	// from simulation at scale 1/2
+			"quantity"::sim_csv_values_transport["trains_required"],	// from simulation at scale 1/2
 			"capacity"::258, // (people)
 			"capacity_std"::30, // varies between months (vacations, ...)
 			"consumption"::15.0,
@@ -300,13 +314,20 @@ species transport parent:bloc{
 	    	tick_vehicle_available_T["truck"] <- number_of_vehicles["truck"];
 	    	tick_vehicle_available_T["train"] <- number_of_vehicles["train"];
 	    	tick_vehicle_available_left_T <- number_of_vehicles_available; // total number of vehicles left available
-	    	tick_vehicles_created_T <- vehicles_created;                   // number of vehicles created this tick 
+//	    	tick_vehicles_created_T <- vehicles_created;                   // number of vehicles created this tick 				// buggy if we pass it directly (passage through reference ? -> the reset() call of number_of_vehicles_available seems to affect the copy as well)
+	    	loop v over: vehicles{
+	    		tick_vehicles_created_T[v] <- vehicles_created[v];
+	    	}
 	    	tick_unfufilled_ressources_T <- tick_unfufilled_ressources;		// all ressources missing/unproduced
 	    	
 	    	
 	    	float transport_completed <- 0.0;
 	    	float transport_penury <- 0.0;
 	    	loop r over: production_outputs_T{
+	    		if r = "km/kg_scale_2"{
+	    			// different scale -> don't take into account for population, and it's already accounted indirectly by not porviding enough transport to agricultural bloc.
+	    			continue;
+	    		}
 	    		transport_completed <- transport_completed + tick_production_T[r];
 	    		transport_penury <- transport_penury + tick_unfufilled_ressources_T[r];
 	    	}
@@ -397,7 +418,7 @@ species transport parent:bloc{
 			
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
 				}
 				// check how much energy we received and work with that
@@ -413,14 +434,19 @@ species transport parent:bloc{
 			}
 			// ask for cotton
 			float required_cotton <- new_quantity * vehicle_data[type]["plastic_weight"];
+			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + new_quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
 				}
+				// check how much cotton we received and work with that
+				cotton_received <- float(infoAgri["transmitted_cotton"]);
+				float cotton_penury <- required_cotton - cotton_received;
+				new_quantity <- int(floor(cotton_received / required_cotton));
 				// penury :
-				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + required_cotton;
-				success <- false;
+				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + cotton_penury;
+//				success <- false;
 			}
 			if success {
 				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + (energy_received);
@@ -469,9 +495,9 @@ species transport parent:bloc{
 	// vvv CITY CODE vvv
     map<string, int> required_vehicles_per_tick_for_10k_citizens <-  [
 		// number of vehicles required for 10k people cities
-		"taxi"::78,		// value obtained from the Scale3 simulation
-		"minibus"::38,	// value obtained from the Scale3 simulation
-		"bicycle"::3036	// value obtained from the Scale3 simulation
+		"taxi"::sim_csv_values_transport["taxis_required"],		// value obtained from the Scale3 simulation
+		"minibus"::sim_csv_values_transport["minibuses_required"],	// value obtained from the Scale3 simulation
+		"bicycle"::sim_csv_values_transport["bicycles_required"]	// value obtained from the Scale3 simulation
 	];
 	
     
@@ -501,7 +527,7 @@ species transport parent:bloc{
 		ask transport_producer{			
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
 				}
 				energy_received <- float(infoEner["transmitted_kwh"]);
@@ -518,14 +544,19 @@ species transport parent:bloc{
 			
 			// ask for cotton
 			float required_cotton <- new_quantity * vehicle_data[type]["plastic_weight"];
+			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
-				if verbose_shortage {
-					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
-					}
+				if verbose_Transport {
+					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but only received "+float(infoAgri["transmitted_cotton"])+", but got a \"False\" return");
+				}
+				// check how much cotton we received and work with that
+				cotton_received <- float(infoAgri["transmitted_cotton"]);
+				float cotton_penury <- required_cotton - cotton_received;
+				new_quantity <- int(floor(cotton_received / required_cotton));
 				// penury :
-				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + required_cotton;
-				success <- false;
+				tick_unfufilled_ressources["kg_cotton"] <- tick_unfufilled_ressources["kg_cotton"] + cotton_penury;
+//				success <- false;
 			}
 			if success {
 				tick_resources_used["kWh energy"] <- tick_resources_used["kWh energy"] + energy_received;
@@ -548,6 +579,15 @@ species transport parent:bloc{
 	action update_city_vehicles(list<mini_ville> cities) {
 		list<string> city_vehicles <- ["taxi", "minibus", "bicycle"];
 		loop c over: cities {
+			// this is not ideal but it seems like the demography bloc initializes the population count of the city only AFTER tick 1, so until then we can't setup the city's initial vehicules and age them
+			if not c.is_setup{
+				if c.population_count <= 0.0 {
+					continue;
+				}
+				ask c{
+					do setup_vehicles;
+				}
+			}
 			// update the age of the city vehicles
     		loop v over:city_vehicles{
 				// NOTE : removed the variation in aging at each tick because it would be super computationally heavy to loop through all lifetime ticks for every single city (went back to the original code where we just remove the last (oldest) entry and add a new entry with 0 vehicles (O(1)))
@@ -630,7 +670,7 @@ species transport parent:bloc{
 				ask transport_producer{
 					map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 					if not bool(infoEner["ok"]) {
-						if verbose_shortage {
+						if verbose_Transport {
 							write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 						}
 						// check how much energy we received and work with that
@@ -666,8 +706,9 @@ species transport parent:bloc{
     	
 	// ^^^ CITY CODE ^^^
 
-    int required_trains_per_tick_for_65m_citizens <- 43680;		// value from simulation at scale 1/2
-    int train_km_per_tick_per_65m_person <- 53338799+7557975;		// value from simulation at scale 1/2
+    int required_trains_per_tick_for_65m_citizens <- int(sim_csv_values_transport["trains_required"]);		// value from simulation at scale 1/2;
+    //int required_trains_per_tick_for_65m_citizens <- 50960;		// value from simulation at scale 1/2;
+    int train_km_per_tick_per_65m_person <- sim_csv_values_transport["train_km_month_scale1"]+sim_csv_values_transport["train_km_month_scale2"];		// value from simulation at scale 1/2
 
 	action france_train_population_activity(list<human> pop) {
 		// age/number of trains already updated by update_vehicle_numbers()
@@ -706,7 +747,7 @@ species transport parent:bloc{
 		ask transport_producer{
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 				}
 				// check how much energy we received and work with that
@@ -810,6 +851,7 @@ species transport parent:bloc{
 		// produce ressources to answer a demand in transport 
 		map<string, unknown> produce(string bloc_name, map<string,float> demand){
 			bool global_success <- true;
+			float quantity_sent <- 0.0;
 						
 			loop service over: demand.keys{
 				float quantity_asked <- demand[service]; // already in km*pers or km*kg
@@ -858,7 +900,7 @@ species transport parent:bloc{
 						float new_quantity <- sub_quantity;
 						map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 						if not bool(infoEner["ok"]) {
-							if verbose_shortage {
+							if verbose_Transport {
 								write("[TRANSPORT] Asked Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 							}
 							// check how much energy we received and work with that
@@ -886,13 +928,16 @@ species transport parent:bloc{
 							float emissions <- vehicle_km * specs["emissions"];
 							tick_emissions["gCO2e emissions"] <- tick_emissions["gCO2e emissions"] + emissions;
 							do send_ges_to_ecosystem("transport", emissions);
+							
+							quantity_sent <- new_quantity;
 						}
 					}
 				}
 			}
 			
 			map<string, unknown> prod_info <- [
-        		"ok"::global_success
+        		"ok"::global_success,
+        		"transmitted_transport_km"::quantity_sent
         	];
 			
 			return prod_info;
@@ -954,12 +999,12 @@ experiment run_transport type: gui {
 			    	data c value: tick_production_T[c];
 			    }
 			}
-			chart "Transport ressources Penury" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
+			chart "Transport ressources shortage" type: series size: {0.5, 0.5} position: {0.5, -0.25} y_log_scale:true {
 			    loop v over: (production_outputs_T) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
 			}
-			chart "Used ressources Penury" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
+			chart "Used ressources shortage" type: series size: {0.5, 0.5} position: {1, -0.25} y_log_scale:true {
 			    loop v over: production_inputs_T {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
@@ -979,8 +1024,7 @@ experiment run_transport type: gui {
 //		            if (m_distrib != nil) { data "Minibuses" value: reverse(m_distrib) style: bar color: #yellow; }
 //		            if (t_distrib != nil) { data "Trucks" value: reverse(t_distrib) style: bar color: #red; }
 //		        }
-//		    }
-			
+//		    }	
 			
 			// ROW 2
 			chart "Energy and Cotton used" type: series size: {0.5,0.5} position: {-0.5, 0.25} y_log_scale: true {
@@ -993,13 +1037,13 @@ experiment run_transport type: gui {
 			    	data e value: tick_emissions_T[e] color: #black;
 			    }
 			}
-			chart "Vehicles Penury" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
+			chart "Vehicles Shortage" type: series size: {0.5, 0.5} position: {0.5, 0.25} y_log_scale:true {
 			    loop v over: (vehicles) {
 			    	data v value: tick_unfufilled_ressources_T[v];
 			    }
 			}
 			
-		    chart "completion" type: series size: {0.5, 0.5} position: {1, 0.25}  y_log_scale:true {
+		    chart "completion Population ressources" type: series size: {0.5, 0.5} position: {1, 0.25}  y_log_scale:true {
 		        transport t_agent <- first(transport);
 		        data "completion" value: completion;
 		    }
@@ -1019,7 +1063,6 @@ experiment run_transport type: gui {
 //		            if (distrib != nil) { data "Bicycles" value: reverse(distrib) style: bar color: #pink; }
 //		        }
 //		    }
-			
 			
 			// ROW 3
 			chart "Total Vehicles" type: series size: {0.5,0.5} position: {-0.5, 0.75} y_log_scale:true {

@@ -15,7 +15,7 @@ import "../API/API.gaml"
  */
 
 global {
-	
+	bool verbose_Ecosystem <- false;
 	float nb_humans_per_agent <- 19500.0;
     
     /*
@@ -160,7 +160,9 @@ species ecosystem parent:bloc {
     
     
     action tick(list<human> pop, list<mini_ville> cities) {
-    	write water_used_by_bloc_tick;
+    	if verbose_Ecosystem {
+	    	write water_used_by_bloc_tick;
+		}
     	do update_wildlife_population();
     	do update_time_and_season();
         do regenerate_resources();

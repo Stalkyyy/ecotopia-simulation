@@ -56,6 +56,8 @@ global {
 		// start simulation :
 		ask coordinator {
 			do register_all_blocs; // register the blocs in the coordinator
+			do set_scheduling(["ecosystem", "energy", "agricultural", "transport", "urbanism", "residents"]);
+			write "Execution order of blocs: " + scheduling;
 			do start; // start the simulation
 		}
 

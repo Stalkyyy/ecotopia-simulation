@@ -180,7 +180,7 @@ species coordinator{
 		loop b over: blocs{
 			do register_bloc(b); //register the bloc
 		}
-		write "registered blocs : "+registered_blocs;
+		//write "registered blocs : "+registered_blocs;
 		if length(scheduling) = 0{
 			scheduling <- blocs collect each.name; // set default scheduling order
 		}
@@ -202,7 +202,7 @@ species coordinator{
 
 		list<human> pop <- get_all_instances(human);	
 		list<mini_ville> cities <- (mini_ville as list<mini_ville>);
-		//write "coordinator: mini_villes=" + length(cities);
+//		write "coordinator: mini_villes=" + length(cities);
 
 		loop bloc_name over: scheduling{ // move to next tick for all blocs, following the defined scheduling
 			if bloc_name in registered_blocs.keys{

@@ -11,6 +11,7 @@
 model MiniVille
 
 global{
+	bool verbose_MiniVille <- false;
 	// Mini-ville initialization (v1: fixed number, no creation/destruction)
 	int mini_ville_count <- 49;
 	float total_area_per_ville <- 2e6; // m2 per mini-ville
@@ -33,6 +34,18 @@ bool debug_decay_log_default <- false;
 
 	// Housing capacity per unit (shared baseline)
 	map<string, float> capacity_per_unit <- ["wood"::3.0, "modular"::2.5]; // persons per unit
+	
+	// CSV values from the simulations
+	map<string, float> sim_csv_values_miniville <- [
+		// From CitySimulation: Scale 3
+		"taxis_required"::53,
+		"minibuses_required"::50,
+		"bicycles_required"::3425,
+		"weekly_walk_km"::14632,
+		"weekly_taxi_km"::1605,
+		"weekly_minibus_km"::6665,
+		"weekly_bicycle_km"::99205
+	];
 }
 
 /**
@@ -77,29 +90,29 @@ species mini_ville {
 
 	// vvv TRANSPORT BLOC VEHICLES vvv
 	// DATA :
+	bool is_setup <- false;
 	list<string> vehicles <- ["taxi", "minibus", "bicycle"];
 	map<string, map<string, float>> vehicle_data <- [
 		// initial quantity
 		// lifetime for each vehicle
 		// number of km used with this vehicle during a tick
-		// WE MULTIPLIED BY 4.35 to get per month instead of per week
 		"walk"::[
-			"km_per_tick_per_10k_person"::63649	// value obtained from the Scale3 simulation 
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_walk_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"taxi"::[
-			"quantity"::53,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["taxis_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::138,
-			"km_per_tick_per_10k_person"::6977	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_taxi_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"minibus"::[
-			"quantity"::50,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["minibuses_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::98,
-			"km_per_tick_per_10k_person"::28988	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_minibus_km"]*4.348	// value obtained from the Scale3 simulation
 		],
 		"bicycle"::[
-			"quantity"::3425,	// value obtained from the Scale3 simulation
+			"quantity"::sim_csv_values_miniville["bicycles_required"],	// value obtained from the Scale3 simulation
 			"lifetime"::84,
-			"km_per_tick_per_10k_person"::431542	// value obtained from the Scale3 simulation
+			"km_per_tick_per_10k_person"::sim_csv_values_miniville["weekly_bicycle_km"]*4.348	// value obtained from the Scale3 simulation
 		]
 	];
 	
@@ -113,8 +126,12 @@ species mini_ville {
 	
 	// function to setup the original amounts of vehicles of the mini_ville and their age
 	action setup_vehicles {
+		// TODO remove when mini-ville is enough. Right now we only get 49 instead of the proposed 6500 or 6825.
+		// the 49 comes from Urbanism creating only where the GIS cities are, and not the rest.
+		float miniville_difference_multiplier <- 6500.0 / 49.0;
 		loop v over:vehicles{
-			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"]);
+//			write vehicle_data[v];
+			number_of_vehicles[v] <- int(vehicle_data[v]["quantity"] * (population_count/10000));
 			
 			// initializing lifespan (uniform distribution of age)
 			vehicles_age[v] <- [];
@@ -168,9 +185,11 @@ float tick_surface_freed <- 0.0;
 			+ (modular_housing_units * capacity_per_unit["modular"]);
 
 		// debug log
-		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+		if verbose_MiniVille {
+			write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+		}
 		
-		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
+//		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
 	}
 	
 	// Register an order (does NOT consume resources).
