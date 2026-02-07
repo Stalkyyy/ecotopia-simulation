@@ -8,6 +8,7 @@ model Urbanism
 import "../API/API.gaml"
 
 global{
+	bool verbose_Urbanism <- false;
 	// Demography scaling (must match Demography.gaml pop_per_ind)
 	float nb_humans_per_agent <- 19500.0;
 	//int pop_per_ind <- 6700;
@@ -162,7 +163,7 @@ species urbanism parent: bloc{
 	}
 
 	list<string> get_output_resources_labels{
-		// expose aggregate housing capacity (REAL persons) for Demography
+		// expose aggregate housing capacity (REAL persons, already scaled by alpha_mv) for Demography
 		return ["total_housing_capacity"];
 	}
 
@@ -274,7 +275,9 @@ ask cities {
 		remaining_buildable_scaled <- constructible_surface_total * alpha_mv;
 
 		if(not cities_logged){
-			write "urbanism received mini_villes=" + string(length(cities)) + " alpha_mv=" + string(alpha_mv);
+			if verbose_Urbanism {
+				write "urbanism received mini_villes=" + string(length(cities)) + " alpha_mv=" + string(alpha_mv);
+			}
 			cities_logged <- true;
 		}
 
@@ -320,8 +323,10 @@ ask cities {
 					// Try to reserve resources immediately so construction can start in the same tick when possible.
 					// Respect the per-tick cap to avoid mass-start artifacts when many cities request at once.
 					if(builds_started_count_tick < max_builds_started_per_tick and try_start_city_order(target_city)){
-						write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
+						if verbose_Urbanism {
+							write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
 							+ ") in mini_ville " + string(target_city.index);
+						}
 					}
 				// If ok=false, the mini-ville stays in waiting_resources and will be retried on later ticks.
 
@@ -333,7 +338,7 @@ ask cities {
 
 		// publish capacity (REAL persons)
 		ask producer {
-			tick_outputs["total_housing_capacity"] <- total_capacity;
+			tick_outputs["total_housing_capacity"] <- capacity_real_scaled; // real persons capacity (scaled)
 		}
 
 		// collect for charts/logs
