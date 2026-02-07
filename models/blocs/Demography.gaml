@@ -12,6 +12,7 @@ import "../API/API.gaml"
  */
 global{
 	/* Setup */ 
+	bool verbose_Demography <- false;
 	float total_pop <- 68250000.0;
 	float nb_humans_per_agent <- 19500.0;
 	int nb_init_individuals <- int(total_pop / nb_humans_per_agent);
@@ -87,12 +88,16 @@ global{
 	geometry shape <- square(2000#m);
 	
 	init{  
-		write "[Demography] Global Init. Coordinator: " + length(coordinator) + " | MVs: " + length(mini_ville);
+		if verbose_Demography {
+			write "[Demography] Global Init. Coordinator: " + length(coordinator) + " | MVs: " + length(mini_ville);
+		}
 
 		// Robust Initialization Check (Standalone Mode):
 		// If running without Main/Urbanism (e.g. run_demography experiment), we need to create dummy MiniVilles
 		if (length(coordinator) = 0 and empty(mini_ville)){
-			write "[Demography] No MiniVilles found (Standalone Mode). Initializing dependencies...";
+			if verbose_Demography {
+				write "[Demography] No MiniVilles found (Standalone Mode). Initializing dependencies...";
+			}
 			
 			// FIX: Manually initialize MiniVille global variables just in case
 			if (area_per_unit_default = 0.0) { area_per_unit_default <- 70.0; }
@@ -100,13 +105,17 @@ global{
 			if (buildable_ratio = 0.0) { buildable_ratio <- 0.4; }
 			if (initial_fill_ratio = 0.0) { initial_fill_ratio <- 0.2; }
 			
-			write "[Demography] Creating 550 dummy mini_villes per configuration...";
+			if verbose_Demography {
+				write "[Demography] Creating 550 dummy mini_villes per configuration...";
+			}
 			create mini_ville number: 550 with: [location::{0,0,0}]; 
 		}
 		
 		// 2. Create and setup the residents agent (Manager) if it doesn't exist
 		if (empty(residents)) {
-			write "[Demography] Creating residents agent...";
+			if verbose_Demography {
+				write "[Demography] Creating residents agent...";
+			}
 			create residents number: 1 {
 				do setup;
 			}
@@ -117,7 +126,9 @@ global{
 	reflex standalone_driver when: empty(coordinator) {
 		// Recovery: Ensure MiniVilles exist (fix for missing initialization)
 		if (empty(mini_ville)) {
-			write "[Demography] RECOVERY: Creating 550 MiniVilles in reflex loop.";
+			if verbose_Demography {
+				write "[Demography] RECOVERY: Creating 550 MiniVilles in reflex loop.";
+			}
 			create mini_ville number: 550 with: [location::{0,0,0}]; 
 		}
 		
@@ -298,10 +309,14 @@ species residents parent:bloc{
 				// Debug log every 100 mini_villes
 				if (index mod 100 = 0) {
 					total_mapped_pop <- total_mapped_pop + int(population_count);
-					write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
+					if verbose_Demography {
+						write "[Demography / MiniVille Debug] MiniVille " + index + " population: " + population_count + " / Cap: " + housing_capacity;
+					}
 				}
 			}
-			write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * nb_humans_per_agent);
+			if verbose_Demography {
+				write "[Demography Debug] Total Mapped Population: " + total_mapped_pop + " / " + (length(individual) * nb_humans_per_agent);
+			}
 		}
 	}
     
@@ -662,7 +677,9 @@ species residents parent:bloc{
 		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
 		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
 		float transport_completion <- producer.get_transport_completion();
-		write "[Demography] Transport Completion: " + transport_completion;
+		if verbose_Demography {
+			write "[Demography] Transport Completion: " + transport_completion;
+		}
 		float transport_bonus <- (transport_completion >= 0.8) ? 0.5 : (transport_completion - 0.5); // Bonus if good, penalty if bad
 
 		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);

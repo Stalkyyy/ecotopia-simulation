@@ -19,6 +19,7 @@ import "../API/API.gaml"
  * No explicit building agents in v1: housing is aggregated inside mini-villes.
  */
 global{
+	bool verbose_Urbanism <- false;
 	// Demography scaling (must match Demography.gaml pop_per_ind)
 	float nb_humans_per_agent <- 19500.0;
 	//int pop_per_ind <- 6700;
@@ -218,7 +219,9 @@ species urbanism parent: bloc{
 		remaining_buildable_scaled <- constructible_surface_total * alpha_mv;
 
 		if(not cities_logged){
-			write "urbanism received mini_villes=" + string(length(cities)) + " alpha_mv=" + string(alpha_mv);
+			if verbose_Urbanism {
+				write "urbanism received mini_villes=" + string(length(cities)) + " alpha_mv=" + string(alpha_mv);
+			}
 			cities_logged <- true;
 		}
 
@@ -263,8 +266,10 @@ species urbanism parent: bloc{
 					// Try to reserve resources immediately so construction can start in the same tick when possible.
 					// Respect the per-tick cap to avoid mass-start artifacts when many cities request at once.
 					if(builds_started_count_tick < max_builds_started_per_tick and try_start_city_order(target_city)){
-						write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
+						if verbose_Urbanism {
+							write "urbanism: start build " + string(planned_units) + " units (area=" + string(planned_surface)
 							+ ") in mini_ville " + string(target_city.index);
+						}
 					}
 				// If ok=false, the mini-ville stays in waiting_resources and will be retried on later ticks.
 

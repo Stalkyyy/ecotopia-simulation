@@ -11,6 +11,7 @@
 model MiniVille
 
 global{
+	bool verbose_MiniVille <- false;
 	// Mini-ville initialization (v1: fixed number, no creation/destruction)
 	int mini_ville_count <- 550;
 	float total_area_per_ville <- 2e6; // m² per mini-ville (macro proxy)
@@ -161,7 +162,9 @@ species mini_ville {
 			+ (modular_housing_units * capacity_per_unit["modular"]);
 		
 		// debug log
-		write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+		if verbose_MiniVille {
+			write "mini_ville " + string(index) + " buildable_area=" + string(buildable_area);
+		}
 		
 //		do setup_vehicles;	// <<< TRANSPORT BLOC VEHICLES
 	}

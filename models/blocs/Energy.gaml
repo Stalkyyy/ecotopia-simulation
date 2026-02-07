@@ -9,7 +9,7 @@ model Energy
 import "../API/API.gaml"
 
 global {
-
+	bool verbose_energy <- false;
 	// API usage
 	list<string> production_inputs_E <- ["L water", "m² land", "kg_cotton"];
 	list<string> production_outputs_E <- ["kWh energy"];
@@ -736,7 +736,9 @@ species energy parent:bloc {
 		}
 		
 		action set_supplier(string product, bloc bloc_agent){
-			write name+": external producer "+bloc_agent+" set for"+product;
+			if verbose_energy{
+				write name+": external producer "+bloc_agent+" set for"+product;
+			}
 			external_producers[product] <- bloc_agent;
 		}
 		
@@ -880,7 +882,7 @@ species energy parent:bloc {
 			}
 			
 			// Logging of lifecycle events
-			if (nb_newly_built > 0) {
+			if (nb_newly_built > 0 and verbose_energy) {
 				if (source_name = "nuclear") {
 					write "[ENERGIE] " + nb_newly_built + " centrales nucléaires construites";
 				} else if (source_name = "solar") {
@@ -959,13 +961,21 @@ species energy parent:bloc {
 
 					// Logging of new construction starts
 					if (source_name = "nuclear") {
-						write "[ENERGIE] Construction de " + built + " centrales nucléaires";
+						if verbose_energy{
+							write "[ENERGIE] Construction de " + built + " centrales nucléaires";
+						}
 					} else if (source_name = "solar") {
-						write "[ENERGIE] Construction de " + built + " parcs solaires";
+						if verbose_energy{
+							write "[ENERGIE] Construction de " + built + " parcs solaires";
+						}
 					} else if (source_name = "wind") {
-						write "[ENERGIE] Construction de " + built + " parcs éoliens";
+						if verbose_energy{
+							write "[ENERGIE] Construction de " + built + " parcs éoliens";
+						}
 					} else if (source_name = "hydro") {
-						write "[ENERGIE] Construction de " + built + " barrages hydroélectriques";
+						if verbose_energy{
+							write "[ENERGIE] Construction de " + built + " barrages hydroélectriques";
+						}
 					}
 				}
 			}

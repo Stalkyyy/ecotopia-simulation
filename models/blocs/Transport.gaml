@@ -13,8 +13,8 @@ import "../API/API.gaml"
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
 global{
+	bool verbose_Transport <- false;
 	float completion <- 1.0;
-	bool verbose_shortage <- false;
 	
 	// CSV values from the simulations
 	map<string, float> sim_csv_values_transport <- [
@@ -418,7 +418,7 @@ species transport parent:bloc{
 			
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
 				}
 				// check how much energy we received and work with that
@@ -437,7 +437,7 @@ species transport parent:bloc{
 			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + new_quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but got a \"False\" return");
 				}
 				// check how much cotton we received and work with that
@@ -527,7 +527,7 @@ species transport parent:bloc{
 		ask transport_producer{			
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::required_energy]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Energy for " + required_energy + " energy (kWh), but got a \"False\" return");
 				}
 				energy_received <- float(infoEner["transmitted_kwh"]);
@@ -547,7 +547,7 @@ species transport parent:bloc{
 			float cotton_received <- 0.0;
 			map<string, unknown> infoAgri <- external_producers["kg_cotton"].producer.produce("transport", ["kg_cotton"::required_cotton]);
 			if not bool(infoAgri["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to create " + quantity + " " + type + ", asked Agriculture for " + required_cotton + " cotton (kg), but only received "+float(infoAgri["transmitted_cotton"])+", but got a \"False\" return");
 				}
 				// check how much cotton we received and work with that
@@ -670,7 +670,7 @@ species transport parent:bloc{
 				ask transport_producer{
 					map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 					if not bool(infoEner["ok"]) {
-						if verbose_shortage {
+						if verbose_Transport {
 							write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 						}
 						// check how much energy we received and work with that
@@ -747,7 +747,7 @@ species transport parent:bloc{
 		ask transport_producer{
 			map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 			if not bool(infoEner["ok"]) {
-				if verbose_shortage {
+				if verbose_Transport {
 					write("[TRANSPORT] Tried to ask Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 				}
 				// check how much energy we received and work with that
@@ -900,7 +900,7 @@ species transport parent:bloc{
 						float new_quantity <- sub_quantity;
 						map<string, unknown> infoEner <- external_producers["kWh energy"].producer.produce("transport", ["kWh energy"::energy_needed]);
 						if not bool(infoEner["ok"]) {
-							if verbose_shortage {
+							if verbose_Transport {
 								write("[TRANSPORT] Asked Energy Bloc for " + energy_needed + " energy (kWh), but got a \"False\" return");
 							}
 							// check how much energy we received and work with that

@@ -14,7 +14,7 @@ import "../blocs/Demography.gaml"
  * We define here the global variables and data of the bloc. Some are needed for the displays (charts, series...).
  */
 global{
-	
+	bool verbose_Agricultural <- false;
 	float nb_humans_per_agent <- 19500.0;
 	// DEBUG: multiplier to scale all delivered outputs (set to 0.0 to simulate full shortage)
 	float debug_output_multiplier <- 1.0;
@@ -536,7 +536,9 @@ species agricultural parent:bloc{
 		}
 		
 		action set_supplier(string product, bloc bloc_agent){
-			write name+": external producer "+bloc_agent+" set for "+product;
+			if verbose_Agricultural {
+				write name+": external producer "+bloc_agent+" set for "+product;
+			}
 			external_producers[product] <- bloc_agent;
 		}
 	
@@ -636,7 +638,9 @@ species agricultural parent:bloc{
 								
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        if not bool(info["ok"]) { 
-	                        	write "bloque" + u;
+	                        	if verbose_Agricultural {
+		                        	write "bloque" + u;
+	                        	}
 	                        	float transmitted_transport <- float(info["transmitted_km/kg_scale_2"]);
 	                        	float ratio <- float(transmitted_transport/quantity_needed);
 	                        	deliver_remaining <- deliver_remaining*ratio;
@@ -662,7 +666,9 @@ species agricultural parent:bloc{
 	                        if (quantity_needed > 0){
 	                        	map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 		                        if not bool(info["ok"]) { 
-		                        	write "bloque" + u;
+		                        	if verbose_Agricultural {
+			                        	write "bloque" + u;
+		                        	}
 		                        	float transmitted_land <- float(info["transmitted_m² land"]);
 		                        	float ratio <- float(transmitted_land/quantity_needed);
 		                        	deliver_remaining <- deliver_remaining*ratio;
@@ -680,7 +686,9 @@ species agricultural parent:bloc{
 	                    if(u = "L water"){
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        if not bool(info["ok"]) { 
-	                        	write "bloque" + u;
+	                        	if verbose_Agricultural {
+	                        		write "bloque" + u;
+	                        	}
 	                        	float transmitted_water <- float(info["transmitted_L water"]);
 	                        	float ratio <- float(transmitted_water/quantity_needed);
 	                        	deliver_remaining <- deliver_remaining*ratio;
@@ -696,7 +704,9 @@ species agricultural parent:bloc{
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
 	                        // write "info : " + info;
 	                        if not bool(info["ok"]) { 
-	                        	write "bloque" + u;
+	                        	if verbose_Agricultural {
+	                        		write "bloque" + u;
+	                        	}
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
 	                        	float ratio <- float(transmitted_energy/quantity_needed);
 	                        	deliver_remaining <- deliver_remaining*ratio;
