@@ -73,6 +73,7 @@ global{
 	
 	/* Variables for Global Happiness and Stability */
 	float global_happiness_index <- 0.5; // Starts neutral. Range 0.0 (misery) to 1.0 (euphoria)
+	float previous_happiness_index <- 0.5;
 	float coeff_birth_happiness <- 1.0; // Gradually increases if happiness is high
 	
 	/* Seasonal mortality coefficient (higher in winter, lower in summer, averages to 1.0) */
@@ -514,8 +515,6 @@ species residents parent:bloc{
 		}
 
 		// Use a reasonable population-weighted ideal intake based on typical age distribution
-		// France has a median age around 42, so we use 2100 kcal/day as the average
-		// This avoids the circular dependency of asking individuals during initialization
 		float ideal_intake <- 2000.0;
 		
 		// Now compare actual intake to population-weighted ideal
@@ -566,7 +565,7 @@ species residents parent:bloc{
 		}
 
 		// Ideal water intake: 2-3 L/day
-		// Adequate: 1.5-4 L/day -> coefficient ~1.0
+		// Adequate: 1.5+ L/day -> coefficient ~1.0
 		// Severe dehydration: <0.5 L/day -> coefficient up to 4.0
 		
 		float ideal_intake <- 2.5;
@@ -635,7 +634,7 @@ species residents parent:bloc{
 		// MIN/MAX tuning parameters
 		float min_coeff <- 0.4;
 		// Increased maximum to allow significant population growth when conditions are good
-		float max_coeff <- 1.5; 
+		float max_coeff <- 1.2; 
 
 		// First step protection
 		if (cycle <= 1) {
@@ -667,50 +666,50 @@ species residents parent:bloc{
 	
 	/* updates global happiness based on resource satisfaction */
 	action update_happiness_trend {
-		// Calculate current stress based on mortality coefficients (deviation from 1.0)
-		float food_stress <- max(0.0, coeff_death_cal - 1.05); // Tolerance up to 1.05 before stress
-		float water_stress <- max(0.0, coeff_death_water - 1.05);
-		float housing_stress <- max(0.0, coeff_death_housing - 1.05);
-		float total_stress <- food_stress + water_stress + housing_stress;
 		
-		// Calculate satisfaction bonuses
-		float food_bonus <- (coeff_death_cal <= 1.01) ? 1.0 : 0.0;
-		float water_bonus <- (coeff_death_water <= 1.01) ? 1.0 : 0.0;
-		float housing_bonus <- (housing_deficit <= 0) ? 1.0 : 0.0;
-		float transport_completion <- producer.get_transport_completion();
+		previous_happiness_index <- global_happiness_index; // Store previous value for trend analysis (not used currently but can be useful for future extensions)
+		
+		// Priority order: water > food > housing > transport
+		// water (40%), food (30%), housing (20%), transport (10%)
+		float water_score;
+		float food_score;
+		float housing_score;
+		float transport_score <- producer.get_transport_completion();
+		
+		// Linear scaling for max water mortality (2.0x) to 0 and ideal (1.0x or lower) to 1.0
+		water_score <- min(1.0, max(0.0, (2 - coeff_death_water)));
+		
+		// Linear scaling for max food mortality (1.5x) to 0 and ideal (1.0x or lower) to 1.0
+		food_score <- min(1.0, max(0.0, (3 - 2*coeff_death_cal)));
+
+		// Linear scaling for max housing mortality (1.2x) to 0 and ideal (1.0x or lower) to 1.0
+		housing_score <- min(1.0, max(0.0, (6 - 5*coeff_death_housing)));
+
+		global_happiness_index <- 0.0;
+		global_happiness_index <- global_happiness_index + max(0.0, water_score) * 0.4;
+		global_happiness_index <- global_happiness_index + max(0.0, food_score) * 0.3;
+		global_happiness_index <- global_happiness_index + max(0.0, housing_score) * 0.2;
+		global_happiness_index <- global_happiness_index + max(0.0, transport_score) * 0.1;
+		global_happiness_index <- max(0.0, min(1.0, global_happiness_index)); // Clamp to [0,1]
+
+		// soft movement trend (doesnt update instantly)
+		// updates slower when happiness increases, faster when it decreases
+		if global_happiness_index > previous_happiness_index {
+			global_happiness_index <- previous_happiness_index + (global_happiness_index - previous_happiness_index) * 0.2;
+		} else {
+			global_happiness_index <- previous_happiness_index + (global_happiness_index - previous_happiness_index) * 0.6;
+		}
+		
 		if verbose_Demography {
-			write "[Demography] Transport Completion: " + transport_completion;
-		}
-		float transport_bonus <- (transport_completion >= 0.8) ? 0.5 : (transport_completion - 0.5); // Bonus if good, penalty if bad
-
-		float total_bonus <- food_bonus + water_bonus + housing_bonus + max(0.0, transport_bonus);
-		
-		// Update global happiness index
-		float target_happiness <- 0.5;
-		if (total_stress > 0) {
-			target_happiness <- max(0.4, 0.5 - (total_stress * 1.8));
-			global_happiness_index <- (global_happiness_index * 0.7) + (target_happiness * 0.3);
-		} else if (total_bonus > 0) {
-			// If all bonuses met, target rises slowly
-			target_happiness <- min(1.0, 0.5 + (total_bonus * 0.15)); // Faster rise
-			global_happiness_index <- (global_happiness_index * 0.95) + (target_happiness * 0.05);
-		} else {
-			// Neutral state, drift slowly to center
-			global_happiness_index <- (global_happiness_index * 0.98) + (target_happiness * 0.02);
+			write "[Demography] Water Score: " + water_score;
+			write "[Demography] Food Score: " + food_score;
+			write "[Demography] Housing Score: " + housing_score;
+			write "[Demography] Transport Score: " + transport_score;
+			write "[Demography] Global Happiness Index: " + global_happiness_index;
 		}
 
-		// Adjust birth rate based on happiness
-		if (global_happiness_index > 0.6) {
-			coeff_birth_happiness <- coeff_birth_happiness + 0.001; // Slower accumulation
-		} else if (global_happiness_index < 0.4) {
-			coeff_birth_happiness <- coeff_birth_happiness - 0.003; // Faster drop
-		} else {
-			if (coeff_birth_happiness > 1.0) { coeff_birth_happiness <- coeff_birth_happiness - 0.001; }
-			else if (coeff_birth_happiness < 1.0) { coeff_birth_happiness <- coeff_birth_happiness + 0.001; }
-		}
-		
-		// Clamp birth coefficient
-		coeff_birth_happiness <- max(0.5, min(1.5, coeff_birth_happiness));
+		previous_happiness_index <- global_happiness_index;
+		coeff_birth_happiness <- 0.6 + (global_happiness_index * 0.6);
 	}
 
 	/* apply deaths*/
@@ -1121,12 +1120,12 @@ chart "Population Growth Rate" type: series size: {0.33,0.33} position: {0.66, 0
 			
 			chart "Global happiness index" type: series size: {0.33,0.33} position: {0.66, 0} {
 				data "global_happiness_index" value: global_happiness_index color: #magenta;
+				data "coeff_birth_happiness" value: coeff_birth_happiness color: #purple;
 			}
 			
 			chart "Housing coefficients" type: series size: {0.33,0.33} position: {0.66, 0.33} {
 				data "coeff_death_housing" value: coeff_death_housing color: #red;
 				data "coeff_birth_housing" value: coeff_birth_housing color: #purple;
-				data "coeff_birth_happiness" value: coeff_birth_happiness color: #magenta;
 			}
 			
 		}
