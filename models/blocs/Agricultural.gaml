@@ -183,12 +183,20 @@ global{
 	  "winter"::0.6
 	];
 	
+	float global_overprod_factor <- 1.0; // >1 -> overproduction more intense overall, <1 -> less overprod
+	float global_stock_use_factor <- 1.0; // >1 -> stock use more intense overall, <1 -> less usage of stock
+	
+	float overprod_spring <- 0.10;
+	float overprod_summer <- 0.05;
+	float overprod_autumn <- 0.08;
+	float overprod_winter <- 0.02;
+	
 	// surproduction plus raisonnable
 	map<string, float> seasonal_overproduction <- [
-	  "spring"::0.10,
-	  "summer"::0.05,
-	  "autumn"::0.08,
-	  "winter"::0.02
+	  "spring"::overprod_spring * global_overprod_factor,
+	  "summer"::overprod_summer * global_overprod_factor,
+	  "autumn"::overprod_autumn * global_overprod_factor,
+	  "winter"::overprod_winter * global_overprod_factor
 	];
 	// surproduction coton (réduite)
 	map<string, float> seasonal_overproduction_cotton <- [
@@ -198,13 +206,28 @@ global{
 	  "winter"::0.0
 	];
 	
+		
+	float stock_use_spring <- 0.10;
+	float stock_use_summer <- 0.15;
+	float stock_use_autumn <- 0.20;
+	float stock_use_winter <- 0.25;
+	
 	// utilisation stock plus progressive (sinon tu vides tout en hiver et tu n’as plus rien)
 	map<string, float> seasonal_stock_use <- [
-	  "spring"::0.10,
-	  "summer"::0.15,
-	  "autumn"::0.20,
-	  "winter"::0.25
+	  "spring"::stock_use_spring * global_stock_use_factor,
+	  "summer"::stock_use_summer * global_stock_use_factor,
+	  "autumn"::stock_use_autumn * global_stock_use_factor,
+	  "winter"::stock_use_winter * global_stock_use_factor
 	];
+	
+	float seasonal_overproduction_effective {
+	    return seasonal_overproduction[season_agri];
+	}
+	
+	float seasonal_stock_use_effective {
+	    return seasonal_stock_use[season_agri];
+	}
+		
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -380,6 +403,7 @@ species agricultural parent:bloc{
 	    string s <- season_agri;
 	    return seasonal_stock_use[s];
 	}
+		
     
     
     float get_stock_to_consume(string p, float demand){
@@ -959,7 +983,25 @@ experiment run_agricultural type: gui {
 	//parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
 	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
 	
+	parameter 'Facteur global surprod' var: global_overprod_factor min:0.0 max:5.0 step:0.1;
+	parameter "Surprod printemps" var: overprod_spring min:0.0 max:1.0 step:0.01;
+	parameter "Surprod été"       var: overprod_summer min:0.0 max:1.0 step:0.01;
+	parameter "Surprod automne"   var: overprod_autumn min:0.0 max:1.0 step:0.01;
+	parameter "Surprod hiver"     var: overprod_winter min:0.0 max:1.0 step:0.01;
+	
+	parameter "Facteur global stock use" var: global_stock_use_factor min:0.0 max:5.0 step:0.1;
+	parameter "Usage stock printemps" var: stock_use_spring min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock été"       var: stock_use_summer min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock automne"   var: stock_use_autumn min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock hiver"     var: stock_use_winter min:0.0 max:1.0 step:0.05;
+	
 	output {
+		monitor "Mois" value: month_agri;
+		monitor "Année" value: year_agri;
+		monitor "Saison agricole" value: season_agri;
+		monitor "Surproduction saison" value: one_of(agricultural).get_seasonal_overproduction();
+		monitor "Usage stock saison" value: one_of(agricultural).get_seasonal_stock_use();
+		
 		display Agricultural_information {
 			chart "Direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
 			    loop c over: production_outputs_A{
