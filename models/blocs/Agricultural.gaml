@@ -88,6 +88,7 @@ global{
 	map<string, float> tick_emissions_A <- [];
 	map<string, float> tick_demand_A <- [];
 	map<string, float> tick_consumption_A <- [];
+	float agri_water_used_tick <- 0.0;
 	
 	/* Parameters for hunting */
 	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
@@ -170,6 +171,9 @@ global{
 	// tu fixes un plafond réaliste (à adapter à ton modèle)
 	float max_surface_total <- 6.0e11; // m² (ex: 600 000 km² -> 6e11 m²) A AJUSTER
 	float surface_growth_rate <- 0.05; // vitesse d’extension max par tick (5% du max)
+	
+	// --- Cap eau par tick (L) ---
+	float max_water_use_per_tick <- 1.8e13; // 0.0 = désactive le cap
 		
 	// --- Lissage saison (éviter yoyo trop violent) ---
 	map<string,float> production_seasons <- [
@@ -185,6 +189,13 @@ global{
 	  "summer"::0.05,
 	  "autumn"::0.08,
 	  "winter"::0.02
+	];
+	// surproduction coton (réduite)
+	map<string, float> seasonal_overproduction_cotton <- [
+	  "spring"::0.02,
+	  "summer"::0.01,
+	  "autumn"::0.02,
+	  "winter"::0.0
 	];
 	
 	// utilisation stock plus progressive (sinon tu vides tout en hiver et tu n’as plus rien)
@@ -667,6 +678,9 @@ species agricultural parent:bloc{
 	            // livré visé (surproduction)
 	            //float deliver <- to_produce * (1 + overproduction_factor);
 	            float deliver <- to_produce * (1 + seasonal_overprod);
+	            if (c = "kg_cotton") {
+	                deliver <- to_produce * (1 + seasonal_overproduction_cotton[season_agri]);
+	            }
 	            
 	            
 	            // aide (chasse / engrais) = livré
@@ -761,18 +775,35 @@ species agricultural parent:bloc{
 
 	                    
 	                    if (u = "L water") {
+						    float requested_water <- quantity_needed;
+						    float water_limit <- max_water_use_per_tick;
+						    float remaining_allowance <- (water_limit > 0.0) ? max(0.0, water_limit - tick_resources_used[u]) : requested_water;
+						    float capped_request <- min(requested_water, remaining_allowance);
 						
-						    map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
+						    if (capped_request <= 0.0) {
+						        deliver_remaining <- 0.0;
+						        deliver_remaining_with_losses <- 0.0;
+						        res["ok"] <- false;
+						        continue;
+						    }
+						
+						    map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::capped_request]);
 						
 						    if not bool(info["ok"]) {
 						        float transmitted_water <- float(info["transmitted_water"]);
-						        float ratio <- float(transmitted_water / quantity_needed);
+						        float ratio <- float(transmitted_water / max(requested_water, 1e-9));
 						        deliver_remaining <- deliver_remaining * ratio;
 						        deliver_remaining_with_losses <- deliver_remaining_with_losses * ratio;
 						        tick_resources_used[u] <- tick_resources_used[u] + transmitted_water;
 						        res["ok"] <- false;
 						    } else {
-						        tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
+						        float ratio <- float(capped_request / max(requested_water, 1e-9));
+						        if (ratio < 1.0) {
+						            deliver_remaining <- deliver_remaining * ratio;
+						            deliver_remaining_with_losses <- deliver_remaining_with_losses * ratio;
+						            res["ok"] <- false;
+						        }
+						        tick_resources_used[u] <- tick_resources_used[u] + capped_request;
 						    }
 						
 						    continue;
