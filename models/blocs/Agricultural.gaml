@@ -642,11 +642,12 @@ species agricultural parent:bloc{
 		    	
 		    	tick_demand[c] <- tick_demand[c] + demand[c];
 		    	
-		    	float new_demand <- demand[c];
+		    	/*float new_demand <- demand[c];
 		    	float prev <- smoothed_demand[c];
 				float smooth <- (1.0 - alpha_demand_smoothing) * prev + alpha_demand_smoothing * new_demand;
 				smoothed_demand[c] <- smooth;
-				new_demand <- smooth;
+				new_demand <- smooth;*/
+				float new_demand <- demand[c];
 				
 		    	if(external_producers.keys contains "km/kg_scale_2"){
 	                float quantity_needed <- production_output_inputs_A[c]["km/kg_scale_2"] * demand[c];
@@ -704,6 +705,10 @@ species agricultural parent:bloc{
 	            // reste à produire "normalement" (livré)
 	            float deliver_remaining <- deliver - additional_used;
 	            
+	            write "stock : " + from_stock;
+	            write "additional : " + additional_used;
+	            write "restant : " + deliver_remaining;
+	            
 	            
 	            // on applique les pertes dues aux saisons
 	            float deliver_remaining_with_losses <- deliver_remaining + (deliver_remaining * (1 - production_seasons[season_agri]));
@@ -753,7 +758,6 @@ species agricultural parent:bloc{
 						
 						            tick_resources_used[u] <- tick_resources_used[u] + transmitted_land;
 						            surface_production_A[c] <- surface_production_A[c] + transmitted_land;
-						            res["ok"] <- false;
 						        } else {
 						            tick_resources_used[u] <- tick_resources_used[u] + add_land;
 						            surface_production_A[c] <- surface_production_A[c] + add_land;
@@ -766,7 +770,6 @@ species agricultural parent:bloc{
 						            possible <- max(min(possible, 1.0), 0.0);
 						            deliver_remaining <- deliver_remaining * possible;
 						            deliver_remaining_with_losses <- deliver_remaining_with_losses * possible;
-						            res["ok"] <- false;
 						        }
 						    }
 						
@@ -783,7 +786,6 @@ species agricultural parent:bloc{
 						    if (capped_request <= 0.0) {
 						        deliver_remaining <- 0.0;
 						        deliver_remaining_with_losses <- 0.0;
-						        res["ok"] <- false;
 						        continue;
 						    }
 						
@@ -795,13 +797,11 @@ species agricultural parent:bloc{
 						        deliver_remaining <- deliver_remaining * ratio;
 						        deliver_remaining_with_losses <- deliver_remaining_with_losses * ratio;
 						        tick_resources_used[u] <- tick_resources_used[u] + transmitted_water;
-						        res["ok"] <- false;
 						    } else {
 						        float ratio <- float(capped_request / max(requested_water, 1e-9));
 						        if (ratio < 1.0) {
 						            deliver_remaining <- deliver_remaining * ratio;
 						            deliver_remaining_with_losses <- deliver_remaining_with_losses * ratio;
-						            res["ok"] <- false;
 						        }
 						        tick_resources_used[u] <- tick_resources_used[u] + capped_request;
 						    }
@@ -820,7 +820,6 @@ species agricultural parent:bloc{
 	                        	deliver_remaining <- deliver_remaining*ratio;
 	                        	deliver_remaining_with_losses <- deliver_remaining_with_losses*ratio;
 	                        	tick_resources_used[u] <- tick_resources_used[u] + transmitted_energy;
-	                        	res["ok"] <- false;
 	                        } else{
 	                        	tick_resources_used[u] <- tick_resources_used[u] + quantity_needed;
 	                        }
@@ -843,6 +842,12 @@ species agricultural parent:bloc{
 	
 	            
 	            float deliver_real <- (deliver_remaining + additional_used + from_stock) * debug_output_multiplier;
+	            
+	            if(deliver_real >= new_demand){
+	            	res["ok"] <- true;
+	            } else {
+	            	res["ok"] <- false;
+	            }
 		        
 		        if(c = "kg_meat"){
 		        	res["transmitted_meat"] <- min(new_demand,deliver_real); 
