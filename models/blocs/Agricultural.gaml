@@ -629,10 +629,6 @@ species agricultural parent:bloc{
 	            // remaining to produce (delivered)
 	            float deliver_remaining <- deliver - additional_used;
 	            
-	            write "stock : " + from_stock;
-	            write "additional : " + additional_used;
-	            write "restant : " + deliver_remaining;
-	            
 	            
 	            // apply the losses due to the seasons
 	            float deliver_remaining_with_losses <- deliver_remaining + (deliver_remaining * (1 - production_seasons[season_agri]));
