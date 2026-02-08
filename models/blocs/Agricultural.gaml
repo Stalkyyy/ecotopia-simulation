@@ -51,12 +51,6 @@ global{
 		"kg_cotton"::0.0
 	];
 	
-	/* Overproduction factor for stock forecasting */
-	//float overproduction_factor <- 0.05;
-	
-	/* Percentage of stock utilization */
-	//float stock_use_rate <- 1.0;
-	
 	/* Initialization of the stock of agricultural production */
 	map<string, list<map<string, float>>> stock <- [
 		"kg_meat"::[],
@@ -74,13 +68,6 @@ global{
 	/* Total stock per resource displayed on the experience graph */
 	map<string, float> stock_display <- [];
 	
-	/* Number of humans coef */
-	//int nb_humans <- 6700;
-	
-	/* Consumption data */
-	//float vegetarian_proportion <- 0.022;
-	//map<string, float> indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
-	
 	/* Counters & Stats */
 	map<string, float> tick_production_A <- [];
 	map<string, float> tick_pop_consumption_A <- [];
@@ -92,7 +79,6 @@ global{
 	
 	/* Parameters for hunting */
 	float hunting_over_farm <- 0.6; // proportions of meat produced from hunting
-	//float hunted_per_month <- 38000000 / 12; // number of animals hunted per month in France
 	float kg_per_animal <- 25.0;
     int hunted_animals <- 0;
     float hunted_animals_kg <- 0.0;
@@ -110,10 +96,7 @@ global{
     
     float production_emissions_fertilizer <- 1.2;
     float CO2_fermentation <- 0.15;
-    //float CO2_production <- 0.05;
-    //float CO2_emission <- 0.01;
     
-    //map<float,int> time_to_fertilize <- [];
     list<map> fertilizer_batches <- [];
     
     
@@ -135,47 +118,19 @@ global{
 	int year_agri <- 0;
 	string season_agri <- "winter";
     
-    /*map<string, float> production_seasons <- [
-		"spring"::1.0,
-		"summer"::0.8,
-		"autumn"::0.9,
-		"winter"::0.3
-	];
-    
-    map<string, float> seasonal_overproduction <- [
-	    "spring"::0.15,
-	    "summer"::0.05,
-	    "autumn"::0.10,
-	    "winter"::0.0
-	];
 	
-	map<string, float> seasonal_stock_use <- [
-	    "spring"::0.0,
-	    "summer"::0.2,
-	    "autumn"::0.1,
-	    "winter"::0.8
-	];*/
-	
-	/*map<string, float> seasonal_threshold_water <- [
-	  "winter"::5.0e12,
-	  "spring"::2.6e12,
-	  "summer"::6.6e11,
-	  "autumn"::4.0e12
-	];*/
-	
-	// --- Lissage demande/production (éviter pics) ---
-	float alpha_demand_smoothing <- 0.25; // 0.0 = pas de lissage ; 1.0 = ultra réactif
+	// --- Smoothing demand/production (to avoid random pics) ---
+	float alpha_demand_smoothing <- 0.25; // 0.0 = no smoothing ; 1.0 =over reactive
 	map<string,float> smoothed_demand <- ["kg_meat"::0.0, "kg_vegetables"::0.0, "kg_cotton"::0.0];
 	
-	// --- Cap surface (limite physique) ---
-	// tu fixes un plafond réaliste (à adapter à ton modèle)
-	float max_surface_total <- 6.0e11; // m² (ex: 600 000 km² -> 6e11 m²) A AJUSTER
-	float surface_growth_rate <- 0.05; // vitesse d’extension max par tick (5% du max)
+	// --- Limit for the surface used ---
+	float max_surface_total <- 6.0e11; // in m²
+	float surface_growth_rate <- 0.05; // maximum speed of land extension per tick (5% of the max)
 	
-	// --- Cap eau par tick (L) ---
-	float max_water_use_per_tick <- 1.8e13; // 0.0 = désactive le cap
+	// --- Limit for water use (L)---
+	float max_water_use_per_tick <- 1.8e13; // 0.0 = no limit
 		
-	// --- Lissage saison (éviter yoyo trop violent) ---
+	// --- Seasonal smoothing ---
 	map<string,float> production_seasons <- [
 	  "spring"::1.0,
 	  "summer"::0.9,
@@ -183,28 +138,51 @@ global{
 	  "winter"::0.6
 	];
 	
-	// surproduction plus raisonnable
+	float global_overprod_factor <- 1.0; // >1 -> overproduction more intense overall, <1 -> less overprod
+	float global_stock_use_factor <- 1.0; // >1 -> stock use more intense overall, <1 -> less usage of stock
+	
+	float overprod_spring <- 0.10;
+	float overprod_summer <- 0.05;
+	float overprod_autumn <- 0.08;
+	float overprod_winter <- 0.02;
+	
+	// overproduction (to have some stock)
 	map<string, float> seasonal_overproduction <- [
-	  "spring"::0.10,
-	  "summer"::0.05,
-	  "autumn"::0.08,
-	  "winter"::0.02
+	  "spring"::overprod_spring * global_overprod_factor,
+	  "summer"::overprod_summer * global_overprod_factor,
+	  "autumn"::overprod_autumn * global_overprod_factor,
+	  "winter"::overprod_winter * global_overprod_factor
 	];
-	// surproduction coton (réduite)
+	// overproduction for cotton(reduced)
 	map<string, float> seasonal_overproduction_cotton <- [
-	  "spring"::0.02,
-	  "summer"::0.01,
-	  "autumn"::0.02,
-	  "winter"::0.0
+	  "spring"::0.02 * global_overprod_factor,
+	  "summer"::0.01 * global_overprod_factor,
+	  "autumn"::0.02 * global_overprod_factor,
+	  "winter"::0.0 * global_overprod_factor
 	];
 	
-	// utilisation stock plus progressive (sinon tu vides tout en hiver et tu n’as plus rien)
+		
+	float stock_use_spring <- 0.10;
+	float stock_use_summer <- 0.15;
+	float stock_use_autumn <- 0.20;
+	float stock_use_winter <- 0.25;
+	
+	// use of stock
 	map<string, float> seasonal_stock_use <- [
-	  "spring"::0.10,
-	  "summer"::0.15,
-	  "autumn"::0.20,
-	  "winter"::0.25
+	  "spring"::stock_use_spring * global_stock_use_factor,
+	  "summer"::stock_use_summer * global_stock_use_factor,
+	  "autumn"::stock_use_autumn * global_stock_use_factor,
+	  "winter"::stock_use_winter * global_stock_use_factor
 	];
+	
+	float seasonal_overproduction_effective {
+	    return seasonal_overproduction[season_agri];
+	}
+	
+	float seasonal_stock_use_effective {
+	    return seasonal_stock_use[season_agri];
+	}
+		
 	
 	init{ // a security added to avoid launching an experiment without the other blocs
 		if (length(coordinator) = 0){
@@ -236,13 +214,8 @@ species agricultural parent:bloc{
 	}
 	
 	action tick(list<human> pop, list<mini_ville> cities) {
-		
-		//write season_agri;
-		
 		do update_time_and_season_agri;
 		do collect_last_tick_data();
-		
-		//do population_activity(pop);
 	}
 	
 	action set_external_producer(string product, bloc bloc_agent){
@@ -297,7 +270,6 @@ species agricultural parent:bloc{
 							aged_stock << lot;
 						} else {
 							kg_rotten_stock <- kg_rotten_stock + lot["quantity"];
-							//write "Péremption " + p + " : quantité = " + lot["quantity"] + ", âge = " + lot["nb_ticks"];
 						}
 	    			}
 	    			stock[p] <- aged_stock;
@@ -321,18 +293,7 @@ species agricultural parent:bloc{
 	    	// we update the displayed stock
 	    	loop c over: production_outputs_A {
 			    stock_display[c] <- sum(stock[c] collect each["quantity"]);
-			}
-	    	
-	    	// sending the quantities of meat and vegetables produced (excluding surplus) to the population
-	    	/*map<string,float> food_production <- [];
-	    	loop fp over: tick_pop_consumption_A.keys{
-	    		if(fp != "kg_cotton"){
-	    			food_production[fp] <- tick_pop_consumption_A[fp];
-	    		}
-	    	}*/
-	    	/*ask one_of(residents){
-	    		do send_production_agricultural(food_production);
-	    	}	*/    	
+			}	
 	    	
 	    	ask agri_consumer{ // prepare new tick on consumer side
 	    		do reset_tick_counters;
@@ -348,28 +309,6 @@ species agricultural parent:bloc{
 	    	
     	}
 	}
-	
-	/*action population_activity(list<human> pop) {
-		// to vary the probability of vegetarians
-		indivudual_consumption_A <- ["kg_meat"::7.1*(1-vegetarian_proportion), "kg_vegetables"::10.5*(1+vegetarian_proportion)];
-		
-    	ask pop{ // execute the consumption behavior of the population
-    		ask myself.agri_consumer{
-    			do consume(myself); // individuals consume agricultural goods
-    		}
-    	}
-    	 
-    	ask agri_consumer{ // produce the required quantities
-    		ask agri_producer{
-    			loop c over: myself.consumed.keys{
-    				if(c != "kg_cotton"){
-			    		map<string, unknown> info <- produce([c::myself.consumed[c]]); // send the demands to the producer
-			    		// note : in this example, we do not take into account the 'ok' signal.
-			    	}
-		    	}
-		    }
-    	}    	
-    }*/
     
     float get_seasonal_overproduction{
 	    string s <- season_agri;
@@ -380,25 +319,20 @@ species agricultural parent:bloc{
 	    string s <- season_agri;
 	    return seasonal_stock_use[s];
 	}
+		
     
     
     float get_stock_to_consume(string p, float demand){
     	float seasonal_stock_rate <- get_seasonal_stock_use();
-    	//write "consommation stock : " + seasonal_stock_rate;
-		/*if empty(stock[p]) or stock_use_rate <= 0.0 or demand <= 0.0{
-			return 0.0;
-		}*/
 		if empty(stock[p]) or seasonal_stock_rate <= 0.0 or demand <= 0.0{
 			return 0.0;
 		}
 		
 		float stock_to_use <- 0.0;
-		//float desired_from_stock <- demand * stock_use_rate;
 		float desired_from_stock <- demand * seasonal_stock_rate;
 		
 		// We sort the stock according to the age (descending) of the resources to consume the oldest ones first
 		// FIFO operation
-		//list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
 		list<map<string, float>> sorted_stock <- sort_by(copy(stock[p]), -(each["nb_ticks"]));
 		
 		loop lot over:sorted_stock{
@@ -417,7 +351,6 @@ species agricultural parent:bloc{
 		float stock_to_use <- demand;
 		
 		// sorting the stock according to the age (descending) of the resources (FIFO)
-		//list<map<string, float>> sorted_stock <- reverse(sort_by(copy(stock[p]), each["nb_ticks"]));
 		list<map<string, float>> sorted_stock <- sort_by(copy(stock[p]), -(each["nb_ticks"]));
 		
 		list<map<string, float>> updated_stock <- [];
@@ -531,7 +464,7 @@ species agricultural parent:bloc{
 	
 	
 	action tranformation_into_fertilizer(float kg_losses, float kg_manure){
-		// ajouter les calculs de food waste (et voir avec le transport)
+		// add food waste calculation
 		float kg_fertilizer <- 0.0;
 		kg_fertilizer <- kg_fertilizer + (kg_losses * vegetables_to_fertilizer_percentage);
 		kg_fertilizer <- kg_fertilizer + (kg_manure * manure_to_fertilizer_percentage);
@@ -642,11 +575,6 @@ species agricultural parent:bloc{
 		    	
 		    	tick_demand[c] <- tick_demand[c] + demand[c];
 		    	
-		    	/*float new_demand <- demand[c];
-		    	float prev <- smoothed_demand[c];
-				float smooth <- (1.0 - alpha_demand_smoothing) * prev + alpha_demand_smoothing * new_demand;
-				smoothed_demand[c] <- smooth;
-				new_demand <- smooth;*/
 				float new_demand <- demand[c];
 				
 		    	if(external_producers.keys contains "km/kg_scale_2"){
@@ -676,15 +604,11 @@ species agricultural parent:bloc{
 	            float to_produce <- new_demand - from_stock;
 	            if (to_produce < 0.0) { to_produce <- 0.0; }
 	
-	            // livré visé (surproduction)
-	            //float deliver <- to_produce * (1 + overproduction_factor);
 	            float deliver <- to_produce * (1 + seasonal_overprod);
 	            if (c = "kg_cotton") {
 	                deliver <- to_produce * (1 + seasonal_overproduction_cotton[season_agri]);
 	            }
 	            
-	            
-	            // aide (chasse / engrais) = livré
 	            float additional_production <- 0.0;
 	
 	            if(c = "kg_meat"){
@@ -699,10 +623,10 @@ species agricultural parent:bloc{
 	                additional_production <- float(application_fertilizer("kg_cotton"));
 	            }
 	
-	            // on borne : pas plus que ce qu'on veut livrer
+	            // limit: no more than what we want to deliver
 	            float additional_used <- min(additional_production, deliver);
 	
-	            // reste à produire "normalement" (livré)
+	            // remaining to produce (delivered)
 	            float deliver_remaining <- deliver - additional_used;
 	            
 	            write "stock : " + from_stock;
@@ -710,7 +634,7 @@ species agricultural parent:bloc{
 	            write "restant : " + deliver_remaining;
 	            
 	            
-	            // on applique les pertes dues aux saisons
+	            // apply the losses due to the seasons
 	            float deliver_remaining_with_losses <- deliver_remaining + (deliver_remaining * (1 - production_seasons[season_agri]));
 					            
 	
@@ -722,29 +646,27 @@ species agricultural parent:bloc{
 	
 						if (u = "m² land") {
 						
-						    // besoin brut
+						    // brut need
 						    float need_land <- quantity_needed;
 						
-						    // surface déjà installée
+						    // land already installed
 						    float already <- surface_production_A[c];
 						
-						    // manque réel
+						    // real missing land area
 						    float missing <- max(need_land - already, 0.0);
 						
-						    // cap global (toutes cultures confondues)
+						    // global limit (all production included)
 						    float total_surface <- surface_production_A["kg_meat"] + surface_production_A["kg_vegetables"] + surface_production_A["kg_cotton"];
 						
 						    float remaining_global <- max(max_surface_total - total_surface, 0.0);
 						
-						    // cap d’extension par tick
 						    float max_add_this_tick <- min(remaining_global, max_surface_total * surface_growth_rate);
 						
 						    float add_land <- min(missing, max_add_this_tick);
-						
-						    // on compte l’utilisation de la surface existante
+							
 						    tick_resources_used[u] <- tick_resources_used[u] + min(need_land, already);
 						
-						    // si on doit ajouter de la surface : on la demande au bloc land (et on borne)
+						    // if wee need to ask for more land
 						    if (add_land > 0.0) {
 						        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::add_land]);
 						
@@ -752,7 +674,7 @@ species agricultural parent:bloc{
 						            float transmitted_land <- float(info["transmitted_land"]);
 						            float ratio <- transmitted_land / max(add_land, 1e-9);
 						
-						            // si on n’a pas eu toute la surface, on réduit la prod
+						            // if no more land given, then we reduce the production
 						            deliver_remaining <- deliver_remaining * ratio;
 						            deliver_remaining_with_losses <- deliver_remaining_with_losses * ratio;
 						
@@ -763,9 +685,7 @@ species agricultural parent:bloc{
 						            surface_production_A[c] <- surface_production_A[c] + add_land;
 						        }
 						    } else {
-						        // pas possible d’étendre -> on doit réduire la prod (cap dur)
 						        if (missing > 0.0) {
-						            // ratio de surface réellement dispo vs surface requise
 						            float possible <- already / max(need_land, 1e-9);
 						            possible <- max(min(possible, 1.0), 0.0);
 						            deliver_remaining <- deliver_remaining * possible;
@@ -812,9 +732,7 @@ species agricultural parent:bloc{
 	                    
 	                    if(u = "kWh energy"){
 	                        map<string, unknown> info <- external_producers[u].producer.produce("agriculture", [u::quantity_needed]);
-	                        // write "info : " + info;
-	                        if not bool(info["ok"]) { 
-	                        	//write "bloque" + u;
+	                        if not bool(info["ok"]) {
 	                        	float transmitted_energy <- float(info["transmitted_kwh"]);
 	                        	float ratio <- float(transmitted_energy/quantity_needed);
 	                        	deliver_remaining <- deliver_remaining*ratio;
@@ -954,12 +872,27 @@ species agricultural parent:bloc{
  */
 experiment run_agricultural type: gui {
 	
-	//parameter "Taux végétariens" var:vegetarian_proportion min:0.0 max:1.0;
-	//parameter "Taux surproduction" var:overproduction_factor min:0.0 max:1.0;
-	//parameter "Taux utilisation stock" var:stock_use_rate min:0.0 max:1.0;
 	parameter "Taux de chasse" var:hunting_over_farm min:0.0 max:1.0;
 	
+	parameter 'Facteur global surprod' var: global_overprod_factor min:0.0 max:5.0 step:0.1;
+	parameter "Surprod printemps" var: overprod_spring min:0.0 max:1.0 step:0.01;
+	parameter "Surprod été"       var: overprod_summer min:0.0 max:1.0 step:0.01;
+	parameter "Surprod automne"   var: overprod_autumn min:0.0 max:1.0 step:0.01;
+	parameter "Surprod hiver"     var: overprod_winter min:0.0 max:1.0 step:0.01;
+	
+	parameter "Facteur global stock use" var: global_stock_use_factor min:0.0 max:5.0 step:0.1;
+	parameter "Usage stock printemps" var: stock_use_spring min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock été"       var: stock_use_summer min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock automne"   var: stock_use_autumn min:0.0 max:1.0 step:0.05;
+	parameter "Usage stock hiver"     var: stock_use_winter min:0.0 max:1.0 step:0.05;
+	
 	output {
+		monitor "Mois" value: month_agri;
+		monitor "Année" value: year_agri;
+		monitor "Saison agricole" value: season_agri;
+		monitor "Surproduction saison" value: one_of(agricultural).get_seasonal_overproduction();
+		monitor "Usage stock saison" value: one_of(agricultural).get_seasonal_stock_use();
+		
 		display Agricultural_information {
 			chart "Direct consumption" type: series  size: {0.5,0.5} position: {0, 0} {
 			    loop c over: production_outputs_A{
